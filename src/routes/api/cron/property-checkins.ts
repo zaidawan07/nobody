@@ -1,4 +1,4 @@
-// Lovable Cloud calls this on a schedule; authenticateCronRequest() rejects
+// The scheduler calls this on a schedule; authenticateCronRequest() rejects
 // anything without the cron secret, so this is never reachable by a regular
 // client. Processes every property_checkins row that's due, sends it via
 // Twilio (see lib/messaging.server.ts), and records the outcome.
@@ -41,7 +41,10 @@ export const Route = createFileRoute("/api/cron/property-checkins")({
           .select("id, title, agency_id")
           .in("id", propertyIds);
         const agencyIds = Array.from(new Set((properties ?? []).map((p) => p.agency_id)));
-        const { data: agencies } = await supabaseAdmin.from("agencies").select("id, name").in("id", agencyIds);
+        const { data: agencies } = await supabaseAdmin
+          .from("agencies")
+          .select("id, name")
+          .in("id", agencyIds);
 
         const propertyById = new Map((properties ?? []).map((p) => [p.id, p]));
         const agencyNameById = new Map((agencies ?? []).map((a) => [a.id, a.name]));
@@ -51,7 +54,9 @@ export const Route = createFileRoute("/api/cron/property-checkins")({
 
         for (const checkin of due) {
           const property = propertyById.get(checkin.property_id);
-          const agencyName = property ? (agencyNameById.get(property.agency_id) ?? "Your agency") : "Your agency";
+          const agencyName = property
+            ? (agencyNameById.get(property.agency_id) ?? "Your agency")
+            : "Your agency";
           const body = buildCheckinMessage({
             propertyTitle: property?.title ?? "your property",
             contactType: checkin.contact_type,
@@ -68,7 +73,10 @@ export const Route = createFileRoute("/api/cron/property-checkins")({
           } catch (e) {
             await supabaseAdmin
               .from("property_checkins")
-              .update({ status: "failed", provider_error: e instanceof Error ? e.message : "Unknown error" })
+              .update({
+                status: "failed",
+                provider_error: e instanceof Error ? e.message : "Unknown error",
+              })
               .eq("id", checkin.id);
             failed += 1;
           }

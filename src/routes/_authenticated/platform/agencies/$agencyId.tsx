@@ -2,13 +2,32 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, Building2, PauseCircle, PlayCircle, Loader2, BarChart3, Wifi, Bot, MessageSquare, DollarSign, TrendingUp } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  PauseCircle,
+  PlayCircle,
+  Loader2,
+  BarChart3,
+  Wifi,
+  Bot,
+  MessageSquare,
+  DollarSign,
+  TrendingUp,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge, EmptyState } from "@/components/shared/ui";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { fetchAgencyDetail } from "@/lib/queries";
 import { setAgencyStatus } from "@/lib/provisioning.functions";
 import { AgencyUsageOverview } from "@/components/platform/AgencyUsageOverview";
@@ -76,7 +95,9 @@ function AgencyDetailPage() {
   return (
     <AppShell
       title={agency.name}
-      description={[agency.cities_served.join(", "), agency.phone].filter(Boolean).join(" · ") || undefined}
+      description={
+        [agency.cities_served.join(", "), agency.phone].filter(Boolean).join(" · ") || undefined
+      }
       actions={
         <>
           <Button asChild variant="ghost" size="sm">
@@ -149,7 +170,9 @@ function AgencyDetailPage() {
               <TableBody>
                 {agency.members.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className="font-medium text-foreground">{m.full_name ?? "—"}</TableCell>
+                    <TableCell className="font-medium text-foreground">
+                      {m.full_name ?? "—"}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{m.email ?? "—"}</TableCell>
                     <TableCell>
                       <StatusBadge status={m.status} />

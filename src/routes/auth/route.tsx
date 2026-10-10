@@ -12,6 +12,16 @@ export const Route = createFileRoute("/auth")({
       throw redirect({ to: roleHome(access.role) });
     }
   },
+  pendingComponent: () => (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12">
+      <Link to="/" className="mb-8 font-display text-xl font-semibold text-foreground">
+        EstateOS
+      </Link>
+      <div className="w-full max-w-sm">
+        {/* Outlet will be replaced when component loads */}
+      </div>
+    </div>
+  ),
   component: AuthLayout,
 });
 

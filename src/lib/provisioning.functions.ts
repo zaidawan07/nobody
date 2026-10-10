@@ -34,7 +34,7 @@ async function assertRole(
 /** Super admin: create an agency plus its first admin account. */
 export const provisionAgency = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => agencySchema.parse(input))
+  .validator(agencySchema)
   .handler(async ({ data, context }) => {
     await assertRole(context.supabase as never, context.userId, "super_admin");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -87,7 +87,7 @@ export const provisionAgency = createServerFn({ method: "POST" })
 /** Agency admin: add a teammate inside their own agency only. */
 export const addTeamMember = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => memberSchema.parse(input))
+  .validator(memberSchema)
   .handler(async ({ data, context }) => {
     await assertRole(context.supabase as never, context.userId, "agency_admin");
 
@@ -134,9 +134,7 @@ export const addTeamMember = createServerFn({ method: "POST" })
 /** Super admin: pause or reactivate a whole agency. */
 export const setAgencyStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z.object({ agencyId: z.string().uuid(), status: z.enum(["active", "suspended"]) }).parse(input),
-  )
+  .validator(z.object({ agencyId: z.string().uuid(), status: z.enum(["active", "suspended"]) }))
   .handler(async ({ data, context }) => {
     await assertRole(context.supabase as never, context.userId, "super_admin");
     const { error } = await context.supabase
@@ -163,7 +161,7 @@ const memberStatusSchema = z.object({
  */
 export const setMemberStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => memberStatusSchema.parse(input))
+  .validator(memberStatusSchema)
   .handler(async ({ data, context }) => {
     if (data.profileId === context.userId) {
       throw new Error("You cannot change your own account status here.");

@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from "@tanstack/react-router";
 import { SuperAdminDashboard } from "@/components/platform/SuperAdminDashboard";
 
 export const Route = createFileRoute("/_authenticated/platform/")({

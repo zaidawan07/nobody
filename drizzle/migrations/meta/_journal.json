@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790261788136,
+      "tag": "0000_multi_tenant_realestate_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790400000000,
+      "tag": "0001_tenant_isolation_and_employee_scope",
+      "breakpoints": true
+    }
+  ]
+}

@@ -22,13 +22,20 @@ export function buildCheckinMessage(params: {
   contactType: CheckinContactType;
   agencyName: string;
 }): string {
-  const who = params.contactType === "owner" ? "the owner" : params.contactType === "tenant" ? "the tenant" : "you";
-  return (
+  const base =
     `Hi, this is ${params.agencyName}. Quick check-in on "${params.propertyTitle}": ` +
     `how has it been -- comfortable, and in good condition? ` +
-    `Also, is the property currently empty? If so, reply EMPTY and we'll reach out about next steps. ` +
-    `${who === "you" ? "Thanks for the referral -- any new" : "If you know anyone looking, send them"} our way!`
-  );
+    `Also, is the property currently empty? If so, reply EMPTY and we'll reach out about next steps.`;
+
+  // A realtor is a referral source, not a resident: the owner/tenant line above
+  // would read wrong, and so would "If you know anyone looking..." -- they are
+  // the one doing the looking.
+  const closing =
+    params.contactType === "realtor"
+      ? "Thanks for the referral -- any new ones looking are always welcome."
+      : "If you know anyone looking, send them our way!";
+
+  return `${base} ${closing}`;
 }
 
 export async function sendCheckinMessage(params: {
@@ -57,14 +64,17 @@ export async function sendCheckinMessage(params: {
     Body: params.body,
   });
 
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+  const res = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+      },
+      body,
     },
-    body,
-  });
+  );
 
   const json = (await res.json()) as { sid?: string; message?: string };
   if (!res.ok) {

@@ -1,6 +1,6 @@
 # RLS test battery
 
-These scripts evaluate migrations `0000`..`0007` against a real Postgres
+These scripts evaluate migrations `0000`..`0008` against a real Postgres
 engine (not a mock). Use the in-process WASM Postgres runner
 (`node test/run-tests.mjs`) on any machine, or the psql commands below on a
 machine with a Postgres server:
@@ -16,10 +16,12 @@ psql -d estateos_test -f drizzle/migrations/0004_tenant_link_integrity.sql
 psql -d estateos_test -f drizzle/migrations/0005_real_media_and_locations.sql
 psql -d estateos_test -f drizzle/migrations/0006_super_admin_plans_subscriptions_usage_audit.sql
 psql -d estateos_test -f drizzle/migrations/0007_super_admin_platform_lockdown.sql
+psql -d estateos_test -f drizzle/migrations/0008_plan_limits.sql
 psql -d estateos_test -f test/01_seed.sql
 psql -d estateos_test -f test/02_security_tests.sql
 psql -d estateos_test -f test/03_extended_security_tests.sql
 psql -d estateos_test -f test/04_super_admin_security_tests.sql
+psql -d estateos_test -f test/05_subscription_limits.sql
 ```
 
 Or run everything in-process against a WASM Postgres (no server required):
@@ -31,7 +33,7 @@ node test/run-tests.mjs
 
 A clean run prints the number of sections executed, the number of
 `(expect ERROR ...)` sections that raised as expected, one `PASS ...` NOTICE
-per numbered test (T1-T30 plus the bootstrap test) and **no** unexpected
+per numbered test (T1-T41 plus the bootstrap test) and **no** unexpected
 `ERROR`. The lines that say `(expect ERROR ...)` in the `\echo` banner are
 supposed to raise -- that's `psql` showing the RLS/trigger guard doing its
 job, not a failure. `\set ON_ERROR_STOP off` is what lets the script keep
@@ -42,6 +44,13 @@ migration 0006: an agency admin or employee cannot write plans, plan
 features or their own subscription; one agency cannot read another agency's
 subscription, usage or audit rows; anon reads nothing; and the super admin
 can read every platform row and write plans.
+
+`05_subscription_limits.sql` covers migration 0008: an agency at its property
+or lead cap is refused the next insert by the database trigger, an unlimited
+plan and an agency with no subscription are unconstrained, owner-context
+maintenance still works, and the `plan_limit_for_agency` /
+`count_agency_metric` / `agency_is_billing_active` helpers refuse cross-agency
+probes (they are `SECURITY DEFINER`, so RLS alone would not protect them).
 
 If you're running against your actual Supabase project instead of a scratch
 Postgres, skip `00_supabase_stub.sql` (the real `auth` schema already exists)

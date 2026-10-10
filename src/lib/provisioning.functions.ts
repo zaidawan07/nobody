@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertPlanLimit } from "@/lib/plan-limits.server";
 
 const agencySchema = z.object({
   agencyName: z.string().min(2),
@@ -99,6 +100,10 @@ export const addTeamMember = createServerFn({ method: "POST" })
     if (!me?.agency_id) throw new Error("Your account is not linked to an agency.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Writes here go through the service-role client, which migration 0008's
+    // profile trigger deliberately skips -- so the plan check happens here.
+    await assertPlanLimit(supabaseAdmin as never, me.agency_id, "team_members");
     const created = await supabaseAdmin.auth.admin.createUser({
       email: data.email,
       password: data.password,

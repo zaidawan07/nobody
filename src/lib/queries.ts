@@ -226,6 +226,163 @@ export async function fetchAgencySubscription(
   };
 }
 
+/** Minimal plan list for pickers (subscription management). */
+export async function fetchPlansSummary(): Promise<
+  {
+    id: string;
+    name: string;
+    price_pkr: number;
+    interval: Tables<"plans">["interval"];
+    is_active: boolean;
+  }[]
+> {
+  const { data, error } = await supabase
+    .from("plans")
+    .select("id, name, price_pkr, interval, is_active")
+    .order("sort_order");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Per-agency plan + subscription state, for the Super Admin subscriptions page. */
+export interface PlatformSubscriptionRow {
+  agencyId: string;
+  agencyName: string;
+  agencyStatus: Tables<"agencies">["status"];
+  subscriptionId: string | null;
+  subscriptionStatus: Tables<"subscriptions">["status"] | null;
+  planId: string | null;
+  planName: string | null;
+  planPricePkr: number | null;
+  planInterval: Tables<"plans">["interval"] | null;
+  trialEndsAt: string | null;
+  periodEndsAt: string | null;
+}
+
+export async function fetchPlatformSubscriptions(): Promise<PlatformSubscriptionRow[]> {
+  const [{ data: agencies, error }, { data: subs, error: subsError }] = await Promise.all([
+    supabase.from("agencies").select("id, name, status").order("name"),
+    supabase
+      .from("subscriptions")
+      .select(
+        "id, agency_id, status, trial_ends_at, current_period_end, plans(id, name, price_pkr, interval)",
+      ),
+  ]);
+  if (error) throw error;
+  if (subsError) throw subsError;
+
+  const byAgency = new Map((subs ?? []).map((s) => [s.agency_id, s]));
+  return (agencies ?? []).map((a) => {
+    const s = byAgency.get(a.id);
+    return {
+      agencyId: a.id,
+      agencyName: a.name,
+      agencyStatus: a.status,
+      subscriptionId: s?.id ?? null,
+      subscriptionStatus: s?.status ?? null,
+      planId: s?.plans?.id ?? null,
+      planName: s?.plans?.name ?? null,
+      planPricePkr: s?.plans?.price_pkr ?? null,
+      planInterval: s?.plans?.interval ?? null,
+      trialEndsAt: s?.trial_ends_at ?? null,
+      periodEndsAt: s?.current_period_end ?? null,
+    };
+  });
+}
+
+/** Real per-agency record counts plus the plan limits 0006 declares. */
+export interface PlatformUsageRow {
+  agencyId: string;
+  agencyName: string;
+  properties: number;
+  leads: number;
+  teamMembers: number;
+  siteVisits: number;
+  media: number;
+  conversations: number;
+  planName: string | null;
+  limits: { properties: number | null; leads: number | null; teamMembers: number | null };
+}
+
+export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
+  const [
+    { data: agencies, error },
+    properties,
+    leads,
+    profiles,
+    visits,
+    media,
+    conversations,
+    features,
+  ] = await Promise.all([
+    supabase.from("agencies").select("id, name").order("name"),
+    supabase.from("properties").select("agency_id"),
+    supabase.from("leads").select("agency_id"),
+    supabase.from("profiles").select("agency_id"),
+    supabase.from("site_visits").select("agency_id"),
+    supabase.from("property_media").select("agency_id"),
+    supabase.from("conversations").select("agency_id"),
+    supabase.from("plan_features").select("plan_id, feature_key, limit_value, included"),
+  ]);
+  if (error) throw error;
+  for (const q of [properties, leads, profiles, visits, media, conversations, features]) {
+    if (q.error) throw q.error;
+  }
+
+  const tally = (rows: { agency_id: string | null }[] | null, id: string) =>
+    (rows ?? []).filter((r) => r.agency_id === id).length;
+
+  const limitsByPlan = new Map<
+    string,
+    { properties: number | null; leads: number | null; teamMembers: number | null }
+  >();
+  for (const f of features.data ?? []) {
+    if (!f.included) continue;
+    const entry = limitsByPlan.get(f.plan_id) ?? {
+      properties: null,
+      leads: null,
+      teamMembers: null,
+    };
+    if (f.feature_key === "properties") entry.properties = f.limit_value;
+    if (f.feature_key === "leads") entry.leads = f.limit_value;
+    if (f.feature_key === "team_members") entry.teamMembers = f.limit_value;
+    limitsByPlan.set(f.plan_id, entry);
+  }
+
+  const plansByAgency = new Map(
+    await Promise.all(
+      (agencies ?? []).map(async (a) => {
+        const { data: sub } = await supabase
+          .from("subscriptions")
+          .select("plans(id, name)")
+          .eq("agency_id", a.id)
+          .maybeSingle();
+        return [a.id, sub?.plans ?? null] as const;
+      }),
+    ),
+  );
+
+  return (agencies ?? []).map((a) => {
+    const plan = plansByAgency.get(a.id) ?? null;
+    return {
+      agencyId: a.id,
+      agencyName: a.name,
+      properties: tally(properties.data, a.id),
+      leads: tally(leads.data, a.id),
+      teamMembers: tally(profiles.data, a.id),
+      siteVisits: tally(visits.data, a.id),
+      media: tally(media.data, a.id),
+      conversations: tally(conversations.data, a.id),
+      planName: plan?.name ?? null,
+      limits: (plan && limitsByPlan.get(plan.id)) || {
+        properties: null,
+        leads: null,
+        teamMembers: null,
+      },
+    };
+  });
+}
+
 export interface TeamMember {
   id: string;
   full_name: string | null;

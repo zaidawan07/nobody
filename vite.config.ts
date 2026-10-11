@@ -2,13 +2,14 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import react from "@vitejs/plugin-react";
 
-// Property Desk's build config, written directly against Vite. Four plugins do
-// all the work:
+// Property Desk's build config, written directly against Vite. Five plugins:
 //
 //   tailwindcss()        - Tailwind v4 (no PostCSS plugin, no tailwind.config)
 //   tsConfigPaths()      - resolves the "@/*" alias from tsconfig.json
 //   tanstackStart()      - file-based routing, SSR, server functions
+//   react()              - React Refresh for dev mode (after tanstackStart)
 //   nitro()              - the deployable server output, build only
 //
 // NITRO_PRESET switches the deploy target without touching this file.
@@ -36,6 +37,12 @@ export default defineConfig(async ({ command }) => {
         },
       },
     }),
+    // React Refresh runtime. Must come AFTER tanstackStart() -- TanStack
+    // Start's documented plugin order. Without it dev mode fails on every
+    // page with "/@react-refresh could not be resolved". (The Lovable wrapper
+    // used to bundle this plugin; our replacement omitted it, and tsc + build
+    // + tests don't exercise dev mode so nothing caught it.)
+    react(),
   ];
 
   if (command === "build") {

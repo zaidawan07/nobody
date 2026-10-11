@@ -120,6 +120,25 @@ remaining errors are the 10 `no-explicit-any` sites plus one
 `prefer-const`; the 4 warnings are stock shadcn `react-refresh`
 boilerplate. All left as a separate proposal.
 
+## Verification standard
+
+**A cleanup commit is only "green" after all four checks, and dev mode is one
+of them.** tsc, tests and the production build all passed while dev mode was
+completely broken — see below.
+
+| Check | Command | What proves it |
+|---|---|---|
+| Type-check | `npx tsc --noEmit` | 0 errors |
+| Security battery | `node test/run-tests.mjs` | 73 sections / 18 expected-error / PASS |
+| Production build | `npm run build` | 2128 client / 180 SSR / 2160 Nitro modules |
+| **Dev server smoke test** | `npm run dev` then curl `/`, `/auth`, `/auth/signup`, `/pending` | all 200, and `curl /@react-refresh` returns 200 with the runtime (a 200 on the HTML alone does **not** prove React Refresh works — the failure is a client-side module fetch) |
+
+The dev smoke test exists because of a real regression: after removing the
+Lovable wrapper, `vite.config.ts` omitted `@vitejs/plugin-react`. Every check
+above — tsc, tests, build — passed, but dev mode failed on every page with
+`/@react-refresh could not be resolved`. A 200 from curl on `/` does not
+detect this; only fetching `/@react-refresh` does.
+
 ## Not actioned, awaiting approval
 
 - The 10 `no-explicit-any` fixes and 1 `prefer-const` (see the separate

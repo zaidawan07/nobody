@@ -49,8 +49,8 @@ function PendingPage() {
         </div>
         <h1 className="mt-4 text-lg font-semibold">Your account isn't linked to an agency yet</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Signed in as {access?.email}. An agency admin needs to add you as a team member before
-          you can see anything here.
+          Signed in as {access?.email}. An agency admin needs to add you as a team member before you
+          can see anything here.
         </p>
 
         {!access?.platformHasSuperAdmin ? (

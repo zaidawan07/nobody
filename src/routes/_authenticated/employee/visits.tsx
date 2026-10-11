@@ -5,7 +5,14 @@ import { CalendarCheck } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState, StatusBadge } from "@/components/shared/ui";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { fetchVisits } from "@/lib/queries";
 import { VisitDialog } from "@/components/leads/VisitDialog";
@@ -18,7 +25,10 @@ export const Route = createFileRoute("/_authenticated/employee/visits")({
 function EmployeeVisitsPage() {
   const { access } = Route.useRouteContext();
   const agencyId = access.agencyId!;
-  const { data, isLoading } = useQuery({ queryKey: ["visits", agencyId], queryFn: () => fetchVisits(agencyId) });
+  const { data, isLoading } = useQuery({
+    queryKey: ["visits", agencyId],
+    queryFn: () => fetchVisits(agencyId),
+  });
   const [editing, setEditing] = useState<any>(null);
 
   return (
@@ -47,17 +57,25 @@ function EmployeeVisitsPage() {
             <TableBody>
               {data.map((v) => (
                 <TableRow key={v.id}>
-                  <TableCell className="font-medium text-foreground">{v.property_title ?? "—"}</TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {v.property_title ?? "—"}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{v.lead_name ?? "—"}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {v.scheduled_at ? new Date(v.scheduled_at).toLocaleString() : "Not yet scheduled"}
+                    {v.scheduled_at
+                      ? new Date(v.scheduled_at).toLocaleString()
+                      : "Not yet scheduled"}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={v.status} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{v.assignee_name ?? "Unassigned"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {v.assignee_name ?? "Unassigned"}
+                  </TableCell>
                   <TableCell>
-                    <Button size="sm" variant="secondary" onClick={() => setEditing(v)}>Update</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setEditing(v)}>
+                      Update
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -65,7 +83,13 @@ function EmployeeVisitsPage() {
           </Table>
         </div>
       )}
-      <VisitDialog open={editing !== null} onOpenChange={() => setEditing(null)} visit={editing} agencyId={agencyId} role={access.role ?? "employee"} />
+      <VisitDialog
+        open={editing !== null}
+        onOpenChange={() => setEditing(null)}
+        visit={editing}
+        agencyId={agencyId}
+        role={access.role ?? "employee"}
+      />
     </AppShell>
   );
 }

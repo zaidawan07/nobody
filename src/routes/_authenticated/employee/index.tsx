@@ -20,7 +20,10 @@ function EmployeeDashboard() {
   });
 
   return (
-    <AppShell title={`Hi, ${access.fullName ?? "there"}`} description="What's assigned to you right now.">
+    <AppShell
+      title={`Hi, ${access.fullName ?? "there"}`}
+      description="What's assigned to you right now."
+    >
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (

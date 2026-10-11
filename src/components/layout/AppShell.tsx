@@ -30,7 +30,11 @@ interface NavItem {
 const platformNav: NavItem[] = [
   { to: "/platform", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
   { to: "/platform/agencies", label: "Agencies", icon: <Building2 className="size-4" /> },
-  { to: "/platform/subscriptions", label: "Subscriptions", icon: <CreditCard className="size-4" /> },
+  {
+    to: "/platform/subscriptions",
+    label: "Subscriptions",
+    icon: <CreditCard className="size-4" />,
+  },
   { to: "/platform/settings", label: "Settings", icon: <Settings className="size-4" /> },
 ];
 
@@ -101,7 +105,10 @@ export function AppShell({
                   className:
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm bg-sidebar-accent text-sidebar-accent-foreground font-medium",
                 }}
-                activeOptions={{ exact: item.to === "/platform" || item.to === "/agency" || item.to === "/employee" }}
+                activeOptions={{
+                  exact:
+                    item.to === "/platform" || item.to === "/agency" || item.to === "/employee",
+                }}
               >
                 {item.icon}
                 {item.label}
@@ -147,8 +154,13 @@ export function AppShell({
             key={item.to}
             to={item.to}
             className="flex flex-1 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] text-muted-foreground"
-            activeProps={{ className: "flex flex-1 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] font-medium text-foreground bg-accent" }}
-            activeOptions={{ exact: item.to === "/platform" || item.to === "/agency" || item.to === "/employee" }}
+            activeProps={{
+              className:
+                "flex flex-1 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] font-medium text-foreground bg-accent",
+            }}
+            activeOptions={{
+              exact: item.to === "/platform" || item.to === "/agency" || item.to === "/employee",
+            }}
           >
             {item.icon}
             {item.label}

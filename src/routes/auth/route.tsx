@@ -17,9 +17,7 @@ export const Route = createFileRoute("/auth")({
       <Link to="/" className="mb-8 font-display text-xl font-semibold text-foreground">
         EstateOS
       </Link>
-      <div className="w-full max-w-sm">
-        {/* Outlet will be replaced when component loads */}
-      </div>
+      <div className="w-full max-w-sm">{/* Outlet will be replaced when component loads */}</div>
     </div>
   ),
   component: AuthLayout,

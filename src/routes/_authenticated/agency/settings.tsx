@@ -11,7 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAgencyDetail } from "@/lib/queries";
 
@@ -86,7 +93,10 @@ function AgencySettingsPage() {
   return (
     <AppShell title="Agency settings" description="Your agency's own profile.">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="surface-panel max-w-md space-y-4 p-6">
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="surface-panel max-w-md space-y-4 p-6"
+        >
           {formError ? (
             <Alert variant="destructive">
               <AlertCircle className="size-4" />
@@ -99,7 +109,9 @@ function AgencySettingsPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Agency name</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -110,7 +122,9 @@ function AgencySettingsPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Phone</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -121,7 +135,9 @@ function AgencySettingsPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>WhatsApp number</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -132,13 +148,19 @@ function AgencySettingsPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Office address</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Save changes"}
+            {form.formState.isSubmitting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              "Save changes"
+            )}
           </Button>
         </form>
       </Form>

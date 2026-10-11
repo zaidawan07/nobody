@@ -56,7 +56,16 @@ export function StatCard({
 const POSITIVE = new Set(["active", "available", "confirmed", "connected", "completed", "won"]);
 const NEGATIVE = new Set(["suspended", "cancelled", "lost", "no_show", "error"]);
 const NEUTRAL = new Set(["sold", "rented", "inactive", "closed"]);
-const CAUTION = new Set(["pending", "reserved", "requested", "not_connected", "contacted", "qualified", "negotiating", "visit_scheduled"]);
+const CAUTION = new Set([
+  "pending",
+  "reserved",
+  "requested",
+  "not_connected",
+  "contacted",
+  "qualified",
+  "negotiating",
+  "visit_scheduled",
+]);
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {
   if (!status) return null;
@@ -69,5 +78,7 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
         : NEUTRAL.has(status)
           ? "bg-muted text-muted-foreground"
           : "bg-secondary text-secondary-foreground";
-  return <Badge className={cn("font-normal hover:bg-none", tone)}>{getLeadStatusLabel(status)}</Badge>;
+  return (
+    <Badge className={cn("font-normal hover:bg-none", tone)}>{getLeadStatusLabel(status)}</Badge>
+  );
 }

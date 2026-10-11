@@ -13,7 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +30,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { fetchTeamMembers, type TeamMember } from "@/lib/queries";
 import { addTeamMember, setMemberStatus } from "@/lib/provisioning.functions";
 
@@ -58,7 +72,9 @@ function TeamPage() {
     setStatusUpdating(member.id);
     try {
       await updateStatus({ data: { profileId: member.id, status: next } });
-      toast.success(`${member.full_name ?? "Member"} ${next === "active" ? "activated" : "deactivated"}`);
+      toast.success(
+        `${member.full_name ?? "Member"} ${next === "active" ? "activated" : "deactivated"}`,
+      );
       queryClient.invalidateQueries({ queryKey: ["team-members", agencyId] });
       queryClient.invalidateQueries({ queryKey: ["agency-stats", agencyId] });
     } catch (e) {
@@ -125,7 +141,9 @@ function TeamPage() {
                   <TableCell className="font-medium text-foreground">
                     {member.full_name ?? "—"}
                     {member.job_title ? (
-                      <span className="block text-xs font-normal text-muted-foreground">{member.job_title}</span>
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {member.job_title}
+                      </span>
                     ) : null}
                   </TableCell>
                   <TableCell className="text-muted-foreground">

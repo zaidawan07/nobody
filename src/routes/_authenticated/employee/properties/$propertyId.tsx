@@ -26,7 +26,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +42,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   fetchProperty,
   fetchCheckins,
@@ -103,13 +116,20 @@ function PropertyDetailPage() {
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <InfoCard label="Status" value={<StatusBadge status={property.status} />} />
-        <InfoCard label="Price" value={formatPkr(property.price_pkr ? Number(property.price_pkr) : null)} />
+        <InfoCard
+          label="Price"
+          value={formatPkr(property.price_pkr ? Number(property.price_pkr) : null)}
+        />
         <InfoCard label="Area" value={formatArea(property.area_value, property.area_unit)} />
         <InfoCard label="Assigned to" value={property.assignee_name ?? "Unassigned"} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <ContactsCard property={property} agencyId={access.agencyId!} currentUserId={access.userId} />
+        <ContactsCard
+          property={property}
+          agencyId={access.agencyId!}
+          currentUserId={access.userId}
+        />
         <PropertyMediaManager propertyId={property.id} agencyId={access.agencyId!} readOnly />
       </div>
 
@@ -138,14 +158,38 @@ function ContactsCard({
   agencyId,
   currentUserId,
 }: {
-  property: { id: string; assigned_to: string | null; owner_name: string | null; owner_phone: string | null; tenant_name: string | null; tenant_phone: string | null; realtor_name: string | null; realtor_phone: string | null };
+  property: {
+    id: string;
+    assigned_to: string | null;
+    owner_name: string | null;
+    owner_phone: string | null;
+    tenant_name: string | null;
+    tenant_phone: string | null;
+    realtor_name: string | null;
+    realtor_phone: string | null;
+  };
   agencyId: string;
   currentUserId: string;
 }) {
   const contacts = [
-    { type: "owner" as const, label: "Owner", name: property.owner_name, phone: property.owner_phone },
-    { type: "tenant" as const, label: "Tenant", name: property.tenant_name, phone: property.tenant_phone },
-    { type: "realtor" as const, label: "Realtor", name: property.realtor_name, phone: property.realtor_phone },
+    {
+      type: "owner" as const,
+      label: "Owner",
+      name: property.owner_name,
+      phone: property.owner_phone,
+    },
+    {
+      type: "tenant" as const,
+      label: "Tenant",
+      name: property.tenant_name,
+      phone: property.tenant_phone,
+    },
+    {
+      type: "realtor" as const,
+      label: "Realtor",
+      name: property.realtor_name,
+      phone: property.realtor_phone,
+    },
   ];
   const hasAny = contacts.some((c) => c.phone);
 
@@ -161,11 +205,16 @@ function ContactsCard({
           {contacts
             .filter((c) => c.phone)
             .map((c) => (
-              <div key={c.type} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div
+                key={c.type}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
+              >
                 <div>
                   <p className="text-sm font-medium">
                     {c.label}
-                    {c.name ? <span className="font-normal text-muted-foreground"> · {c.name}</span> : null}
+                    {c.name ? (
+                      <span className="font-normal text-muted-foreground"> · {c.name}</span>
+                    ) : null}
                   </p>
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Phone className="size-3" /> {c.phone}
@@ -253,8 +302,8 @@ function ScheduleCheckinDialog({
         <DialogHeader>
           <DialogTitle>Schedule a check-in</DialogTitle>
           <DialogDescription>
-            Sends a message to {contactName || "this contact"} ({contactPhone}) asking about the property's
-            condition and whether it's vacant.
+            Sends a message to {contactName || "this contact"} ({contactPhone}) asking about the
+            property's condition and whether it's vacant.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -301,7 +350,11 @@ function ScheduleCheckinDialog({
             />
             <DialogFooter>
               <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Schedule"}
+                {form.formState.isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Schedule"
+                )}
               </Button>
             </DialogFooter>
           </form>
@@ -344,7 +397,10 @@ function CheckinsCard({ propertyId }: { propertyId: string }) {
       ) : (
         <div className="mt-3 space-y-2">
           {data.map((c) => (
-            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
+            <div
+              key={c.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm"
+            >
               <div>
                 <p className="font-medium">
                   {titleCase(c.contact_type)} · {titleCase(c.channel)}
@@ -354,7 +410,9 @@ function CheckinsCard({ propertyId }: { propertyId: string }) {
                   {c.response_text ? ` — "${c.response_text}"` : ""}
                   {c.is_vacant ? " — reported vacant" : ""}
                 </p>
-                {c.provider_error ? <p className="text-xs text-destructive">{c.provider_error}</p> : null}
+                {c.provider_error ? (
+                  <p className="text-xs text-destructive">{c.provider_error}</p>
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={c.status} />
@@ -480,4 +538,3 @@ function ResponseDialog({ checkin, onDone }: { checkin: CheckinRow; onDone: () =
     </DialogContent>
   );
 }
-

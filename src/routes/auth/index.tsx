@@ -10,7 +10,14 @@ import { roleHome } from "@/lib/role-home";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
 export const Route = createFileRoute("/auth/")({
   head: () => ({ meta: [{ title: "Sign in — EstateOS" }] }),
@@ -49,7 +56,9 @@ function LoginPage() {
   return (
     <div className="surface-panel p-6">
       <h1 className="text-lg font-semibold">Sign in</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Use the email and password your admin gave you.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Use the email and password your admin gave you.
+      </p>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="mt-6 space-y-4">
@@ -67,7 +76,12 @@ function LoginPage() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input type="email" autoComplete="email" placeholder="you@agency.com" {...field} />
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@agency.com"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -81,7 +95,10 @@ function LoginPage() {
               <FormItem>
                 <div className="flex items-center justify-between">
                   <FormLabel>Password</FormLabel>
-                  <Link to="/auth/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
+                  <Link
+                    to="/auth/forgot-password"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
                     Forgot password?
                   </Link>
                 </div>

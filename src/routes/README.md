@@ -2,15 +2,15 @@
 
 File-based routing, one file per route. The folder name becomes the path.
 
-| File | Path |
-|------|------|
-| `index.tsx` | `/` |
-| `auth/index.tsx` | `/auth/` |
-| `auth/signup.tsx` | `/auth/signup` |
-| `_authenticated/route.tsx` | layout guard — requires a signed-in user |
-| `_authenticated/agency/` | agency-admin pages, requires `agency_admin` |
-| `_authenticated/employee/` | employee pages, requires `employee` |
-| `_authenticated/platform/` | super-admin pages, requires `super_admin` |
+| File                       | Path                                        |
+| -------------------------- | ------------------------------------------- |
+| `index.tsx`                | `/`                                         |
+| `auth/index.tsx`           | `/auth/`                                    |
+| `auth/signup.tsx`          | `/auth/signup`                              |
+| `_authenticated/route.tsx` | layout guard — requires a signed-in user    |
+| `_authenticated/agency/`   | agency-admin pages, requires `agency_admin` |
+| `_authenticated/employee/` | employee pages, requires `employee`         |
+| `_authenticated/platform/` | super-admin pages, requires `super_admin`   |
 
 - `$param` segments (e.g. `$propertyId.tsx`) are wildcards.
 - `_leading-underscore` folders are pathless layouts — they wrap children

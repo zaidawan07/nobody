@@ -12,7 +12,10 @@ export function formatPkr(value: number | null | undefined): string {
 }
 
 function trim(n: number): string {
-  return n.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return n
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
 }
 
 export const AREA_UNIT_LABEL: Record<string, string> = {

@@ -4,7 +4,14 @@ import { Home } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState, StatusBadge } from "@/components/shared/ui";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { fetchProperties } from "@/lib/queries";
 import { formatPkr, titleCase } from "@/lib/format";
 
@@ -62,7 +69,9 @@ function EmployeePropertiesPage() {
                       {[p.city, titleCase(p.purpose)].filter(Boolean).join(" · ")}
                     </span>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{titleCase(p.property_type)}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {titleCase(p.property_type)}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge status={p.status} />
                   </TableCell>

@@ -14,16 +14,20 @@ export function videoExtensionOk(file: File): boolean {
 }
 
 export function validateMediaFile(file: File): { kind: "photo" | "video" } | { error: string } {
-  const isImage = IMAGE_MIMES.some((m) => file.type === m) || (file.type === "" && imageExtensionOk(file));
-  const isVideo = VIDEO_MIMES.some((m) => file.type === m) || (file.type === "" && videoExtensionOk(file));
+  const isImage =
+    IMAGE_MIMES.some((m) => file.type === m) || (file.type === "" && imageExtensionOk(file));
+  const isVideo =
+    VIDEO_MIMES.some((m) => file.type === m) || (file.type === "" && videoExtensionOk(file));
   if (isImage) {
-    if (!imageExtensionOk(file) && !IMAGE_MIMES.includes(file.type)) return { error: "Images must be JPEG, PNG, or WebP." };
+    if (!imageExtensionOk(file) && !IMAGE_MIMES.includes(file.type))
+      return { error: "Images must be JPEG, PNG, or WebP." };
     if (file.size > MAX_IMAGE_BYTES) return { error: "Photo too large (max 15 MB)." };
     if (file.size === 0) return { error: "That file is empty." };
     return { kind: "photo" };
   }
   if (isVideo) {
-    if (!videoExtensionOk(file) && !VIDEO_MIMES.includes(file.type)) return { error: "Videos must be MP4, MOV, M4V, or WebM." };
+    if (!videoExtensionOk(file) && !VIDEO_MIMES.includes(file.type))
+      return { error: "Videos must be MP4, MOV, M4V, or WebM." };
     if (file.size > MAX_VIDEO_BYTES) return { error: "Video too large (max 250 MB)." };
     if (file.size === 0) return { error: "That file is empty." };
     return { kind: "video" };
@@ -47,7 +51,11 @@ async function loadImageFromFile(file: Blob): Promise<HTMLImageElement> {
 }
 
 /** Resize (shrink only) + recompress into a JPEG blob sized ~maxLongEdge. */
-export async function optimizeImage(blob: Blob, maxLongEdge: number, quality: number): Promise<Blob> {
+export async function optimizeImage(
+  blob: Blob,
+  maxLongEdge: number,
+  quality: number,
+): Promise<Blob> {
   const img = await loadImageFromFile(blob);
   const scale = Math.min(1, maxLongEdge / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.max(1, Math.round(img.naturalWidth * scale));
@@ -58,7 +66,9 @@ export async function optimizeImage(blob: Blob, maxLongEdge: number, quality: nu
   const ctx = canvas.getContext("2d");
   if (!ctx) return blob;
   ctx.drawImage(img, 0, 0, w, h);
-  return await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b ?? blob), "image/jpeg", quality));
+  return await new Promise<Blob>((resolve) =>
+    canvas.toBlob((b) => resolve(b ?? blob), "image/jpeg", quality),
+  );
 }
 
 /** Extract a poster frame ~10% into the clip. Returns null when the browser can't decode it. */
@@ -81,11 +91,15 @@ export async function extractVideoPoster(file: File): Promise<Blob | null> {
     await new Promise((r) => setTimeout(r, 80));
     const canvas = document.createElement("canvas");
     canvas.width = Math.min(1280, video.videoWidth || 1280);
-    canvas.height = Math.round((canvas.width / (video.videoWidth || 1280)) * (video.videoHeight || 720));
+    canvas.height = Math.round(
+      (canvas.width / (video.videoWidth || 1280)) * (video.videoHeight || 720),
+    );
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.72));
+    return await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.72),
+    );
   } catch {
     return null;
   } finally {
@@ -99,4 +113,3 @@ export async function optimizeImageForUpload(file: File): Promise<{ main: Blob; 
   const thumb = await optimizeImage(file, 480, 0.7);
   return { main, thumb };
 }
-

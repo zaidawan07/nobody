@@ -10,7 +10,14 @@ import { roleHome } from "@/lib/role-home";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
 export const Route = createFileRoute("/accept-invitation")({
   head: () => ({ meta: [{ title: "Accept invitation — EstateOS" }] }),
@@ -61,7 +68,9 @@ function AcceptInvitationPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm surface-panel p-6">
         <h1 className="text-lg font-semibold">Welcome to EstateOS</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Set a password for your account to finish.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Set a password for your account to finish.
+        </p>
 
         {checking ? (
           <div className="mt-6 flex justify-center">
@@ -77,7 +86,10 @@ function AcceptInvitationPage() {
             <AlertCircle className="size-4" />
             <AlertDescription>
               This invitation link is missing or expired. Ask your admin for a new one, or{" "}
-              <Link to="/auth" className="underline">sign in</Link>.
+              <Link to="/auth" className="underline">
+                sign in
+              </Link>
+              .
             </AlertDescription>
           </Alert>
         ) : (
@@ -116,7 +128,11 @@ function AcceptInvitationPage() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Set password"}
+                {form.formState.isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Set password"
+                )}
               </Button>
             </form>
           </Form>

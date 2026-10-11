@@ -8,7 +8,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
 export const Route = createFileRoute("/auth/signup")({
   head: () => ({ meta: [{ title: "Create account — EstateOS" }] }),
@@ -78,8 +85,8 @@ function SignupPage() {
     <div className="surface-panel p-6">
       <h1 className="text-lg font-semibold">Create an account</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Most people on EstateOS are added by an admin and don't need this. Use this form to set up
-        a brand-new platform, or if you were told to create your own account.
+        Most people on EstateOS are added by an admin and don't need this. Use this form to set up a
+        brand-new platform, or if you were told to create your own account.
       </p>
 
       <Form {...form}>
@@ -112,7 +119,12 @@ function SignupPage() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input type="email" autoComplete="email" placeholder="you@agency.com" {...field} />
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@agency.com"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

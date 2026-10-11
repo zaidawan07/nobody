@@ -12,7 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/agency/whatsapp")({
@@ -67,18 +74,16 @@ function WhatsAppPage() {
 
   async function onSubmit(values: z.infer<typeof schema>) {
     setFormError(null);
-    const { error } = await supabase
-      .from("whatsapp_configs")
-      .upsert(
-        {
-          agency_id: agencyId,
-          whatsapp_number: values.whatsappNumber || null,
-          display_name: values.displayName || null,
-          ai_greeting: values.aiGreeting || null,
-          auto_create_leads: values.autoCreateLeads,
-        },
-        { onConflict: "agency_id" },
-      );
+    const { error } = await supabase.from("whatsapp_configs").upsert(
+      {
+        agency_id: agencyId,
+        whatsapp_number: values.whatsappNumber || null,
+        display_name: values.displayName || null,
+        ai_greeting: values.aiGreeting || null,
+        auto_create_leads: values.autoCreateLeads,
+      },
+      { onConflict: "agency_id" },
+    );
     if (error) {
       setFormError(error.message);
       return;
@@ -116,7 +121,9 @@ function WhatsAppPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>WhatsApp number</FormLabel>
-                  <FormControl><Input placeholder="+92..." {...field} /></FormControl>
+                  <FormControl>
+                    <Input placeholder="+92..." {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -127,7 +134,9 @@ function WhatsAppPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Display name</FormLabel>
-                  <FormControl><Input {...field} /></FormControl>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -138,7 +147,9 @@ function WhatsAppPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>AI greeting</FormLabel>
-                  <FormControl><Input {...field} /></FormControl>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

@@ -10,7 +10,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/employee/profile")({
@@ -38,7 +45,11 @@ function EmployeeProfilePage() {
     setFormError(null);
     const { error } = await supabase
       .from("profiles")
-      .update({ full_name: values.fullName, phone: values.phone || null, job_title: values.jobTitle || null })
+      .update({
+        full_name: values.fullName,
+        phone: values.phone || null,
+        job_title: values.jobTitle || null,
+      })
       .eq("id", access.userId);
     if (error) {
       setFormError(error.message);
@@ -51,7 +62,10 @@ function EmployeeProfilePage() {
   return (
     <AppShell title="My profile" description="Your details within the agency.">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="surface-panel max-w-md space-y-4 p-6">
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="surface-panel max-w-md space-y-4 p-6"
+        >
           {formError ? (
             <Alert variant="destructive">
               <AlertCircle className="size-4" />
@@ -64,7 +78,9 @@ function EmployeeProfilePage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Full name</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -75,7 +91,9 @@ function EmployeeProfilePage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Phone</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -86,7 +104,9 @@ function EmployeeProfilePage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Job title</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -95,7 +115,11 @@ function EmployeeProfilePage() {
             Email: {access.email} · Agency: {access.agencyName}
           </div>
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Save changes"}
+            {form.formState.isSubmitting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              "Save changes"
+            )}
           </Button>
         </form>
       </Form>

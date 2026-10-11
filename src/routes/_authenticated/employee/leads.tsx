@@ -5,7 +5,14 @@ import { UserSquare2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState, StatusBadge } from "@/components/shared/ui";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { fetchLeads } from "@/lib/queries";
 import { LeadDialog } from "@/components/leads/LeadDialog";
@@ -18,7 +25,10 @@ export const Route = createFileRoute("/_authenticated/employee/leads")({
 function EmployeeLeadsPage() {
   const { access } = Route.useRouteContext();
   const agencyId = access.agencyId!;
-  const { data, isLoading } = useQuery({ queryKey: ["leads", agencyId], queryFn: () => fetchLeads(agencyId) });
+  const { data, isLoading } = useQuery({
+    queryKey: ["leads", agencyId],
+    queryFn: () => fetchLeads(agencyId),
+  });
   const [editing, setEditing] = useState<any>(null);
 
   return (
@@ -47,13 +57,19 @@ function EmployeeLeadsPage() {
               {data.map((l) => (
                 <TableRow key={l.id}>
                   <TableCell className="font-medium text-foreground">{l.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{l.phone ?? l.whatsapp_number ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {l.phone ?? l.whatsapp_number ?? "—"}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge status={l.status} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{l.assignee_name ?? "Unassigned"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {l.assignee_name ?? "Unassigned"}
+                  </TableCell>
                   <TableCell>
-                    <Button size="sm" variant="secondary" onClick={() => setEditing(l)}>Update</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setEditing(l)}>
+                      Update
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -61,7 +77,13 @@ function EmployeeLeadsPage() {
           </Table>
         </div>
       )}
-      <LeadDialog open={editing !== null} onOpenChange={() => setEditing(null)} lead={editing} agencyId={agencyId} role={access.role ?? "employee"} />
+      <LeadDialog
+        open={editing !== null}
+        onOpenChange={() => setEditing(null)}
+        lead={editing}
+        agencyId={agencyId}
+        role={access.role ?? "employee"}
+      />
     </AppShell>
   );
 }

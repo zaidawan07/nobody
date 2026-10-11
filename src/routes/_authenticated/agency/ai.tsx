@@ -13,7 +13,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/agency/ai")({
@@ -52,7 +59,13 @@ function AiConfigPage() {
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { aiEnabled: false, aiLanguage: "auto", aiTone: "", aiInstructions: "", handoffKeywords: "" },
+    defaultValues: {
+      aiEnabled: false,
+      aiLanguage: "auto",
+      aiTone: "",
+      aiInstructions: "",
+      handoffKeywords: "",
+    },
   });
 
   useEffect(() => {
@@ -74,19 +87,17 @@ function AiConfigPage() {
       .split(",")
       .map((k) => k.trim())
       .filter(Boolean);
-    const { error } = await supabase
-      .from("whatsapp_configs")
-      .upsert(
-        {
-          agency_id: agencyId,
-          ai_enabled: values.aiEnabled,
-          ai_language: values.aiLanguage,
-          ai_tone: values.aiTone || null,
-          ai_instructions: values.aiInstructions || null,
-          handoff_keywords: keywords,
-        },
-        { onConflict: "agency_id" },
-      );
+    const { error } = await supabase.from("whatsapp_configs").upsert(
+      {
+        agency_id: agencyId,
+        ai_enabled: values.aiEnabled,
+        ai_language: values.aiLanguage,
+        ai_tone: values.aiTone || null,
+        ai_instructions: values.aiInstructions || null,
+        handoff_keywords: keywords,
+      },
+      { onConflict: "agency_id" },
+    );
     if (error) {
       setFormError(error.message);
       return;
@@ -106,7 +117,10 @@ function AiConfigPage() {
   return (
     <AppShell title="AI assistant" description="Tune the WhatsApp AI for this agency.">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="surface-panel max-w-md space-y-4 p-6">
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="surface-panel max-w-md space-y-4 p-6"
+        >
           {formError ? (
             <Alert variant="destructive">
               <AlertCircle className="size-4" />
@@ -131,7 +145,9 @@ function AiConfigPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Language</FormLabel>
-                <FormControl><Input placeholder="auto / English / Urdu" {...field} /></FormControl>
+                <FormControl>
+                  <Input placeholder="auto / English / Urdu" {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -142,7 +158,9 @@ function AiConfigPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Tone</FormLabel>
-                <FormControl><Input placeholder="e.g. friendly, professional" {...field} /></FormControl>
+                <FormControl>
+                  <Input placeholder="e.g. friendly, professional" {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -153,7 +171,9 @@ function AiConfigPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Instructions</FormLabel>
-                <FormControl><Textarea rows={4} {...field} /></FormControl>
+                <FormControl>
+                  <Textarea rows={4} {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -164,7 +184,9 @@ function AiConfigPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Handoff keywords (comma-separated)</FormLabel>
-                <FormControl><Input placeholder="manager, call me, agent" {...field} /></FormControl>
+                <FormControl>
+                  <Input placeholder="manager, call me, agent" {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

@@ -34,6 +34,9 @@ import {
 import { createLead, updateLead, fetchAssignableMembers, type LeadRow } from "@/lib/queries";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { parsePkrAmount } from "@/lib/pkr-parser";
+import { useAccess } from "@/hooks/useAccess";
+import { notifyAssignment } from "@/lib/notifications.functions";
+import { useServerFn } from "@tanstack/react-start";
 
 const statusValues = [
   "new",
@@ -79,6 +82,8 @@ export function LeadDialog({
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  const notify = useServerFn(notifyAssignment);
+  const { data: access } = useAccess();
   const { data: members } = useQuery({
     queryKey: ["assignable-members", agencyId],
     queryFn: () => fetchAssignableMembers(agencyId),
@@ -134,9 +139,15 @@ export function LeadDialog({
       if (lead) {
         await updateLead(lead.id, payload);
         toast.success("Lead updated");
+        if (v.assigned_to && v.assigned_to !== access?.userId) {
+          await notify({ data: { event: "lead_assigned", entityId: lead.id } });
+        }
       } else {
-        await createLead(payload);
+        const created = await createLead(payload);
         toast.success("Lead created");
+        if (v.assigned_to) {
+          await notify({ data: { event: "lead_assigned", entityId: created.id } });
+        }
       }
       await queryClient.invalidateQueries({ queryKey: ["leads", agencyId] });
       await queryClient.invalidateQueries({ queryKey: ["leads-paged"] });

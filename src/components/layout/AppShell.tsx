@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Building2,
   Home,
@@ -13,6 +14,7 @@ import {
   User,
   MessageCircle,
   Bot,
+  Bell,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,6 +22,38 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAccess } from "@/hooks/useAccess";
 import { titleCase } from "@/lib/format";
+import { unreadNotificationCount } from "@/lib/notifications.functions";
+
+export function NotificationBell() {
+  const unreadCount = useServerFn(unreadNotificationCount);
+  const { data } = useQuery({
+    queryKey: ["notifications", "unread"],
+    queryFn: () => unreadCount(),
+    // Poll rather than push: a 60s badge is honest about this being a polling
+    // implementation, and avoids a second connection for a tiny count.
+    refetchInterval: 60_000,
+  });
+
+  const count = data?.count ?? 0;
+
+  return (
+    <Link
+      to="/notifications"
+      className="relative inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      aria-label={count > 0 ? `Notifications, ${count} unread` : "Notifications, none unread"}
+    >
+      <Bell className="size-5" />
+      {count > 0 ? (
+        <span
+          data-testid="notification-unread-badge"
+          className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
+        >
+          {count > 99 ? "99+" : count}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
 
 interface NavItem {
   to: string;
@@ -142,7 +176,10 @@ export function AppShell({
                 <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
               ) : null}
             </div>
-            <div className="flex items-center gap-2">{actions}</div>
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              {actions}
+            </div>
           </div>
         </header>
         <div className="px-4 py-4 md:px-6 md:py-6">{children}</div>

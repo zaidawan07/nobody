@@ -430,6 +430,60 @@ export type Database = {
         Relationships: [
         ];
       };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          agency_id: string | null;
+          type: string;
+          title: string;
+          body: string | null;
+          entity_type: string | null;
+          entity_id: string | null;
+          read_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          agency_id?: string | null;
+          type: string;
+          title: string;
+          body?: string | null;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          read_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          agency_id?: string | null;
+          type?: string;
+          title?: string;
+          body?: string | null;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          read_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       platform_bootstrap: {
         Row: {
           id: boolean;
@@ -456,8 +510,7 @@ export type Database = {
           full_name: string | null;
           phone: string | null;
           email: string | null;
-          job_title: string | null;
-          status: Database["public"]["Enums"]["account_status"];
+          job_title: string | null;          status: Database["public"]["Enums"]["account_status"];
           created_at: string;
           updated_at: string;
         };

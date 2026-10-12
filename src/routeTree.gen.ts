@@ -15,6 +15,7 @@ import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation
 import { Route as AuthRouteRouteImport } from './routes/auth/route'
 import { Route as AuthenticatedAgencyRouteRouteImport } from './routes/_authenticated/agency/route'
 import { Route as AuthenticatedEmployeeRouteRouteImport } from './routes/_authenticated/employee/route'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPendingRouteImport } from './routes/_authenticated/pending'
 import { Route as AuthenticatedPlatformRouteRouteImport } from './routes/_authenticated/platform/route'
 import { Route as AuthIndexRouteImport } from './routes/auth/index'
@@ -76,6 +77,12 @@ const AuthenticatedEmployeeRouteRoute =
   AuthenticatedEmployeeRouteRouteImport.update({
     id: '/employee',
     path: '/employee',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedPendingRoute = AuthenticatedPendingRouteImport.update({
@@ -264,6 +271,7 @@ export interface FileRoutesByFullPath {
   '/agency': typeof AuthenticatedAgencyRouteRouteWithChildren
   '/employee': typeof AuthenticatedEmployeeRouteRouteWithChildren
   '/platform': typeof AuthenticatedPlatformRouteRouteWithChildren
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/pending': typeof AuthenticatedPendingRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
@@ -298,6 +306,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/pending': typeof AuthenticatedPendingRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
@@ -338,6 +347,7 @@ export interface FileRoutesById {
   '/_authenticated/agency': typeof AuthenticatedAgencyRouteRouteWithChildren
   '/_authenticated/employee': typeof AuthenticatedEmployeeRouteRouteWithChildren
   '/_authenticated/platform': typeof AuthenticatedPlatformRouteRouteWithChildren
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/pending': typeof AuthenticatedPendingRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
@@ -378,6 +388,7 @@ export interface FileRouteTypes {
     | '/agency'
     | '/employee'
     | '/platform'
+    | '/notifications'
     | '/pending'
     | '/auth/forgot-password'
     | '/auth/reset-password'
@@ -412,6 +423,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/accept-invitation'
+    | '/notifications'
     | '/pending'
     | '/auth/forgot-password'
     | '/auth/reset-password'
@@ -451,6 +463,7 @@ export interface FileRouteTypes {
     | '/_authenticated/agency'
     | '/_authenticated/employee'
     | '/_authenticated/platform'
+    | '/_authenticated/notifications'
     | '/_authenticated/pending'
     | '/auth/forgot-password'
     | '/auth/reset-password'
@@ -533,6 +546,13 @@ declare module '@tanstack/react-router' {
       path: '/employee'
       fullPath: '/employee'
       preLoaderRoute: typeof AuthenticatedEmployeeRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/pending': {
@@ -851,6 +871,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAgencyRouteRoute: typeof AuthenticatedAgencyRouteRouteWithChildren
   AuthenticatedEmployeeRouteRoute: typeof AuthenticatedEmployeeRouteRouteWithChildren
   AuthenticatedPlatformRouteRoute: typeof AuthenticatedPlatformRouteRouteWithChildren
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedPendingRoute: typeof AuthenticatedPendingRoute
 }
 
@@ -858,6 +879,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAgencyRouteRoute: AuthenticatedAgencyRouteRouteWithChildren,
   AuthenticatedEmployeeRouteRoute: AuthenticatedEmployeeRouteRouteWithChildren,
   AuthenticatedPlatformRouteRoute: AuthenticatedPlatformRouteRouteWithChildren,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedPendingRoute: AuthenticatedPendingRoute,
 }
 

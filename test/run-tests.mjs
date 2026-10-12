@@ -30,11 +30,13 @@ const files = [
   "drizzle/migrations/0006_super_admin_plans_subscriptions_usage_audit.sql",
   "drizzle/migrations/0007_super_admin_platform_lockdown.sql",
   "drizzle/migrations/0008_plan_limits.sql",
+  "drizzle/migrations/0009_notifications.sql",
   "test/01_seed.sql",
   "test/02_security_tests.sql",
   "test/03_extended_security_tests.sql",
   "test/04_super_admin_security_tests.sql",
   "test/05_subscription_limits.sql",
+  "test/06_notifications.sql",
 ];
 
 // Split on top-level semicolons while respecting '...', --comments, /* */,

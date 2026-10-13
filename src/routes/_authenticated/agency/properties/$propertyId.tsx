@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -56,10 +57,11 @@ import {
   scheduleCheckin,
   recordCheckinResponse,
   markCheckinSkipped,
-  setPropertyStatus,
   type CheckinRow,
   type PropertyRow,
 } from "@/lib/queries";
+import { setPropertyStatusSafe, reopenProperty } from "@/lib/property-status.functions";
+import { isTerminalStatus, transitionError } from "@/lib/property-availability";
 import { PropertyMediaManager } from "@/components/property/PropertyMediaManager";
 import { EditPropertyDialog } from "@/components/property/EditPropertyDialog";
 import { formatPkr, formatArea, titleCase } from "@/lib/format";
@@ -265,11 +267,30 @@ function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
 function ChangeStatus({ property, agencyId }: { property: PropertyRow; agencyId: string }) {
   const queryClient = useQueryClient();
   const [value, setValue] = useState<PropertyRow["status"]>(property.status);
+  const setStatus = useServerFn(setPropertyStatusSafe);
+  const reopen = useServerFn(reopenProperty);
+  const [reopenId, setReopenId] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [reopenError, setReopenError] = useState<string | null>(null);
+  const [reopening, setReopening] = useState(false);
+
   async function apply(status: PropertyRow["status"]) {
+    // The same rule the database enforces, checked first so the user gets a
+    // sentence instead of a permission error. The server re-checks against the
+    // row it reads, so a stale picker can still lose the race correctly.
+    const problem = transitionError(value ?? "draft", status);
+    if (problem) {
+      toast.error(problem);
+      return;
+    }
     try {
-      await setPropertyStatus(property.id, status);
-      setValue(status);
-      toast.success(`Status changed to ${status}`);
+      const result = await setStatus({ data: { id: property.id, status } });
+      if (!result.ok) {
+        toast.error(result.error ?? "That status change isn't allowed.");
+        return;
+      }
+      setValue(result.status as PropertyRow["status"]);
+      toast.success(`Status changed to ${result.status}`);
       await queryClient.invalidateQueries({ queryKey: ["property", property.id] });
       await queryClient.invalidateQueries({ queryKey: ["properties", agencyId] });
       await queryClient.invalidateQueries({ queryKey: ["properties-paged"] });
@@ -277,24 +298,91 @@ function ChangeStatus({ property, agencyId }: { property: PropertyRow; agencyId:
       toast.error(e instanceof Error ? e.message : "Couldn't update status");
     }
   }
+
+  async function onReopen() {
+    setReopening(true);
+    setReopenError(null);
+    try {
+      await reopen({ data: { id: property.id, reason } });
+      setValue("available");
+      setReopenId(null);
+      setReason("");
+      toast.success("Property reopened and recorded");
+      await queryClient.invalidateQueries({ queryKey: ["property", property.id] });
+      await queryClient.invalidateQueries({ queryKey: ["properties", agencyId] });
+      await queryClient.invalidateQueries({ queryKey: ["properties-paged"] });
+    } catch (e) {
+      setReopenError(e instanceof Error ? e.message : "Couldn't reopen the property.");
+    } finally {
+      setReopening(false);
+    }
+  }
+
+  const closed = isTerminalStatus(value ?? "");
+
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground">Change status:</span>
-      <Select value={value ?? "available"} onValueChange={(v) => apply(v as PropertyRow["status"])}>
-        <SelectTrigger className="w-40">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="draft">Draft</SelectItem>
-          <SelectItem value="available">Available</SelectItem>
-          <SelectItem value="reserved">Reserved</SelectItem>
-          <SelectItem value="sold">Sold</SelectItem>
-          <SelectItem value="rented">Rented</SelectItem>
-          <SelectItem value="unavailable">Unavailable</SelectItem>
-          <SelectItem value="expired">Expired</SelectItem>
-          <SelectItem value="inactive">Inactive</SelectItem>
-        </SelectContent>
-      </Select>
+    <div className="space-y-3 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground">Change status:</span>
+        <Select
+          value={value ?? "available"}
+          onValueChange={(v) => apply(v as PropertyRow["status"])}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="available">Available</SelectItem>
+            <SelectItem value="reserved">Reserved</SelectItem>
+            <SelectItem value="sold">Sold</SelectItem>
+            <SelectItem value="rented">Rented</SelectItem>
+            <SelectItem value="unavailable">Unavailable</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {closed ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <p>
+            A {value} property can't go back to available or reserved from the list above. If that
+            was recorded in error, reopen it — reopening is written to the audit log.
+          </p>
+          {reopenId === property.id ? (
+            <div className="mt-2 space-y-2">
+              <Input
+                placeholder="Reason (at least 5 characters)"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              {reopenError ? <p className="text-destructive">{reopenError}</p> : null}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={onReopen}
+                  disabled={reopening || reason.trim().length < 5}
+                >
+                  {reopening ? <Loader2 className="size-4 animate-spin" /> : "Reopen"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setReopenId(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => setReopenId(property.id)}
+            >
+              Reopen property
+            </Button>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

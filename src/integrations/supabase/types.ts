@@ -1150,6 +1150,10 @@ export type Database = {
       has_role: { Args: { _user_id: string; _role: Database["public"]["Enums"]["app_role"]; }; Returns: boolean | null };
       is_agency_admin: { Args: { _agency_id: string; }; Returns: boolean | null };
       is_super_admin: { Args: never; Returns: boolean | null };
+      reopen_property: {
+        Args: { _property_id: string; _reason: string };
+        Returns: undefined;
+      };
       plan_limit_for_agency: { Args: { _agency_id: string; _metric_key: string; }; Returns: number | null };
     };
     Enums: {

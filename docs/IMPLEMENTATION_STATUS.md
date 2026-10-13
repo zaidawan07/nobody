@@ -23,13 +23,9 @@ The "zero tables" observation in the brief did not reproduce; the likely cause i
 | Password reset | Working, no change needed |
 | Role route protection | Working, no change needed |
 | Server-side role assertions | Working, no change needed |
-| Tenant isolation | Working, verified by 73-section battery |
-| **Super-admin conversation access** | **GAP** — read-all policy is unqualified. Needs an explicit, auditable support-access mechanism. |
-| **Invitation flow** | **PARTIAL** — accept page exists, no invite send path |
-
-Plan: add a `super_admin_support_sessions` table plus RLS so a super admin can read another agency's conversations only through a recorded, time-boxed grant that writes an audit row. No work started.
-
----
+| Tenant isolation | Working, verified by the security battery |
+| Super-admin conversation access | **Already closed by 0003.** Verified against the live catalog: no super-admin cross-agency read policy exists on conversations or conversation_messages. Earlier audit note claiming a gap was wrong and is corrected. |
+| Invitation flow | Partial: accept page exists, no invite-by-email send path |
 
 ## Phase 2 — Core product — IN PROGRESS
 
@@ -119,6 +115,31 @@ Capacitor is the recommended path: the web app is already responsive and mobile-
 | Email verification end-to-end | no SMTP |
 
 ---
+
+## Phase 2 — Property status correctness — COMPLETE
+
+One consistent rule lives in src/lib/property-availability.ts: only
+status = 'available' is recommendable; sold/rented are terminal. Every
+availability decision now uses it.
+
+- Migration 0010 adds a BEFORE UPDATE trigger refusing sold/rented ->
+  available/reserved, plus reopen_property() as the single deliberate,
+  recorded way back (audit row holds actor, agency, reason, both statuses;
+  rejects reasons under 5 chars; refuses cross-agency and employee callers).
+  No applied migration was edited.
+- src/lib/property-status.functions.ts adds setPropertyStatusSafe (server-side:
+  refuses a guarded transition and re-checks the row it just read, so a stale
+  client cannot win) and checkAvailability.
+- EditPropertyDialog no longer swallows the status-change error -- a refused
+  write previously still reported "Property updated".
+- $propertyId inline picker uses the same rule and offers "Reopen property"
+  with a reason field when the current status is closed.
+- queries.ts dashboard count uses isAvailableStatus instead of a literal.
+- test/07_property_status.sql: T49-T58 covering allowed corrections, both
+  guarded transitions, reopen + audit content, short reason, cross-agency,
+  employee, log tenant-scoping, the availability rule, and a stale cache.
+
+Not applied to live; proven against PGlite.
 
 ## Commits in this pass
 

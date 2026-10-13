@@ -97,13 +97,19 @@ Consequence: `drizzle-kit migrate` cannot reconcile this database, because it wo
 
 | Feature | State | Evidence |
 |---|---|---|
-| Role-based route protection | Working | `platform/route.tsx`, `agency/route.tsx`, `employee/route.tsx` redirect correctly |
+| Role-based route protection | Working | `platform/route.tsx`, `agency/route.tsx`, `employee/route.tsx` redirect |
 | Server-side role assertion | Working | `assertRole` in `provisioning.functions.ts`, `has_role` rpc |
-| Tenant isolation | Working | RLS 18/18; 73-section battery incl. cross-agency negative tests |
-| Employee assignment scope | Working | `can_access_assigned_record` used by 0001 policies |
+| Tenant isolation | Working | RLS 18/18 |
+| Employee assignment scope | Working | `can_access_assigned_record` in 0001 policies |
 | Storage access policies | Working | `property-media` bucket + policies |
 | Cross-tenant FK integrity | Working | `validate_tenant_link` and `validate_*_links` triggers (0004) |
-| Super-admin conversation access | Working, but see note | an unqualified read-all policy exists. The brief asks for an explicit, authorised, auditable support-access mechanism; that does not exist yet. |
+| Super-admin conversation access | **Working — no change needed** | 0003 dropped `super admin access conversations` / `super admin access conversation_messages`. The live catalog shows only assigned/delete policies, so a super admin cannot read agency conversations. |
+
+> **Correction.** An earlier version of this audit recorded super-admin
+> conversation access as a gap, based on an intermediate live-schema probe.
+> That was wrong: migration 0003 already removed those policies, and the live
+> catalog confirms it. A support-access mechanism would therefore be
+> additional scope, not a required fix, and was not built.
 
 ### 2.3 Properties
 

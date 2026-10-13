@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, Database } from "@/integrations/supabase/types";
+import { isAvailableStatus } from "@/lib/property-availability";
 
 // Every function here runs as the signed-in user via the browser client, so
 // Postgres RLS (migrations 0000 + 0001) is what actually scopes the results
@@ -160,7 +161,10 @@ export async function fetchAgencyStats(agencyId: string): Promise<AgencyStats> {
 
   return {
     totalProperties: properties?.length ?? 0,
-    availableProperties: properties?.filter((p) => p.status === "available").length ?? 0,
+    // The single availability rule, not a literal here: this counter and every
+    // other availability decision must agree, or a property can be counted as
+    // unavailable on one page and the same page will offer it as live elsewhere.
+    availableProperties: properties?.filter((p) => isAvailableStatus(p.status)).length ?? 0,
     leads: leads?.length ?? 0,
     upcomingVisits: visits?.length ?? 0,
     employees: roles?.filter((r) => r.role === "employee").length ?? 0,

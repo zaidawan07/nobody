@@ -35,11 +35,13 @@ import {
 import {
   fetchLocationChildren,
   fetchAssignableMembers,
-  setPropertyStatus,
   updateProperty,
   type PropertyRow,
 } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
+import { setPropertyStatusSafe, reopenProperty } from "@/lib/property-status.functions";
+import { useServerFn } from "@tanstack/react-start";
+import { isAllowedTransition, transitionError } from "@/lib/property-availability";
 
 const propertyTypeValues = [
   "house",
@@ -144,6 +146,8 @@ export function EditPropertyDialog({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
+  const setStatus = useServerFn(setPropertyStatusSafe);
+  const reopen = useServerFn(reopenProperty);
   const { data: members } = useQuery({
     queryKey: ["assignable-members", property.agency_id],
     queryFn: () => fetchAssignableMembers(property.agency_id),
@@ -240,11 +244,16 @@ export function EditPropertyDialog({
         assigned_to: values.assignedTo || null,
       });
       if (values.status !== property.status) {
-        try {
-          await setPropertyStatus(property.id, values.status as never);
-        } catch (e) {
-          /* setPropertyStatus may be needed for non-default updates (see queries.ts) */
-        }
+        // Route through the server function: it refuses the two guarded
+        // transitions (sold/rented -> available/reserved) with a readable
+        // reason and re-checks against the row it just read, so a stale form
+        // cannot reopen a property someone else sold in the meantime.
+        // The old code called setPropertyStatus() here and swallowed the error,
+        // which reported "Property updated" even when the write was refused.
+        const result = await setStatus({
+          data: { id: property.id, status: values.status as never },
+        });
+        if (!result.ok) throw new Error(result.error ?? "That status change isn't allowed.");
       }
       toast.success("Property updated");
       await queryClient.invalidateQueries({ queryKey: ["property", property.id] });

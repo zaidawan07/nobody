@@ -1,11 +1,24 @@
-// Apply the full drizzle migration chain (0000..0008) to a real Postgres.
+// Apply the drizzle migration chain to a real Postgres.
 //
 // Deliberately NOT drizzle-kit: drizzle/migrations/meta/_journal.json only
 // lists 0000 and 0001, so `drizzle-kit migrate` would replay those two against
 // a live database that already has them and never reach 0002-0008.
 //
 // Usage:
-//   DATABASE_URL=postgres://... node scripts/apply-migrations.mjs
+//   node scripts/apply-migrations.mjs                 # whole chain 0000..
+//   node scripts/apply-migrations.mjs --from 0010     # 0010 and later only
+//   node scripts/apply-migrations.mjs --from 0010 --dry-run
+//
+// --from exists because the chain is only partly applied on a live project:
+// 0000-0008 landed another way and are not recorded in supabase_migrations,
+// and 0009 is recorded and already ran. Replaying them is pointless and risks
+// re-touching data, so a controlled batch starts at the first unapplied number.
+//
+// --dry-run lists exactly which files would run, in order, without connecting.
+//
+// The whole run happens inside ONE transaction. Any error other than the
+// idempotent ones below rolls the entire batch back, so a failure cannot leave
+// half the schema changed.
 //
 // The URL is read from the environment or .env -- never hardcoded, never printed.
 
@@ -71,14 +84,58 @@ try {
 }
 
 const migrationsDir = path.join(root, "drizzle", "migrations");
-const files = getMigrationFiles(migrationsDir);
+const allFiles = getMigrationFiles(migrationsDir);
 
-if (files.length === 0) {
+if (allFiles.length === 0) {
   console.error(`No migration files found in ${migrationsDir}`);
   process.exit(2);
 }
 
-console.log(`Applying ${files.length} migrations from ${path.relative(root, migrationsDir)}/`);
+// --- --from NNNN and --dry-run -------------------------------------------------
+const args = process.argv.slice(2);
+function flagValue(name) {
+  const i = args.indexOf(name);
+  return i === -1 ? null : (args[i + 1] ?? null);
+}
+if (flagValue("--from") === null && args.includes("--from")) {
+  console.error("--from needs a migration number, e.g. --from 0010");
+  process.exit(2);
+}
+const fromRaw = flagValue("--from");
+let from = 0;
+if (fromRaw !== null) {
+  from = Number.parseInt(fromRaw, 10);
+  if (!Number.isFinite(from) || from < 0) {
+    console.error(`--from must be a non-negative migration number, got "${fromRaw}"`);
+    process.exit(2);
+  }
+}
+const dryRun = args.includes("--dry-run");
+
+const files = allFiles.filter((f) => {
+  const m = /^(\d+)_/.exec(path.basename(f));
+  return m ? Number.parseInt(m[1], 10) >= from : true;
+});
+
+if (files.length === 0) {
+  console.error(`No migrations at or after ${String(from).padStart(4, "0")}.`);
+  process.exit(2);
+}
+
+if (dryRun) {
+  console.log(
+    `Dry run: would apply ${files.length} of ${allFiles.length} migrations, in this order:`,
+  );
+  for (const f of files) console.log(`  ${path.basename(f)}`);
+  process.exit(0);
+}
+
+console.log(
+  from > 0
+    ? `Applying ${files.length} migrations from ${String(from).padStart(4, "0")} onward, in one transaction:`
+    : `Applying ${files.length} migrations from ${path.relative(root, migrationsDir)}/, in one transaction:`,
+);
+for (const f of files) console.log(`  ${path.basename(f)}`);
 
 const sql = postgres(connectionUrl, {
   max: 1,
@@ -91,8 +148,14 @@ const sql = postgres(connectionUrl, {
 const client = { exec: (s) => sql.unsafe(s) };
 let totalStatements = 0;
 let failed = 0;
+let skipped = 0;
 
 try {
+  // One transaction for the whole batch. If anything unexpected happens the
+  // rollback below restores the exact pre-run state, so a failed batch can
+  // never leave the schema half-migrated.
+  await sql.unsafe("BEGIN");
+
   // The migration chain is written against a Supabase-shaped database: it
   // grants to `authenticated` / `service_role` / `anon`, and reads `auth.uid()`
   // and `storage.buckets`. A real Supabase project provides all of that
@@ -110,6 +173,7 @@ try {
     console.log("  target: bare Postgres -> applying test/00_supabase_stub.sql first");
     const r = await applyMigrationFile(client, stub);
     totalStatements += r.statements;
+    skipped += r.skipped;
     if (r.errors.length) {
       for (const e of r.errors) console.log("      ! " + e);
       failed += r.errors.length;
@@ -117,27 +181,50 @@ try {
   }
 
   for (const file of files) {
-    const { name, statements, errors, skipped } = await applyMigrationFile(client, file);
+    const {
+      name,
+      statements,
+      errors,
+      skipped: fileSkipped,
+    } = await applyMigrationFile(client, file);
     totalStatements += statements;
+    skipped += fileSkipped;
     if (errors.length > 0) {
       failed += errors.length;
       console.log(`  ${name.padEnd(58)} ${statements} statements, ${errors.length} ERROR(S)`);
       for (const e of errors) console.log(`      ! ${e}`);
-    } else {
-      console.log(
-        `  ${name.padEnd(58)} ${statements} statements${skipped ? ` (${skipped} idempotent)` : ""}`,
-      );
+      break; // stop before touching anything further
     }
+    console.log(
+      `  ${name.padEnd(58)} ${statements} statements${fileSkipped ? ` (${fileSkipped} idempotent)` : ""}`,
+    );
   }
+
+  if (failed > 0) {
+    await sql.unsafe("ROLLBACK");
+    console.error("\nRolled back. Nothing from this run was kept.");
+    process.exit(1);
+  }
+
+  await sql.unsafe("COMMIT");
+} catch (e) {
+  try {
+    await sql.unsafe("ROLLBACK");
+  } catch {
+    // The connection may already be gone; the exit code is what matters.
+  }
+  console.error(
+    `Run aborted and rolled back: ${String(e && e.message ? e.message : e).slice(0, 300)}`,
+  );
+  process.exit(1);
 } finally {
   await sql.end();
 }
 
-if (failed > 0) {
-  console.error(`\nDone with ${failed} error(s) across ${totalStatements} statements.`);
-  process.exit(1);
-}
-console.log(`\nAll ${files.length} migrations applied (${totalStatements} statements).`);
+console.log(
+  `\nCommitted ${files.length} migration(s), ${totalStatements} statements` +
+    `${skipped ? `, ${skipped} idempotent skips` : ""}.`,
+);
 
 /**
  * Distinguishes "connected and this is not Supabase" from "could not connect".

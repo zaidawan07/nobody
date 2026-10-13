@@ -232,13 +232,20 @@ END $$;
 SET ROLE anon;
 DO $$
 BEGIN
-  IF public.plan_limit_for_agency('10000000-0000-0000-0000-000000000001', 'properties') IS NOT NULL THEN
-    RAISE EXCEPTION 'FAIL T41: anon read agency A plan limits';
-  END IF;
-  IF public.count_agency_metric('10000000-0000-0000-0000-000000000001', 'properties') IS NOT NULL THEN
-    RAISE EXCEPTION 'FAIL T41: anon read agency A record counts';
-  END IF;
-  RAISE NOTICE 'PASS T41: anon gets null from every helper';
+  -- Either outcome is a pass: anon has no EXECUTE at all since 0009 revoked
+  -- it (permission denied), or a narrower grant leaves it with no data.
+  DECLARE n int;
+  BEGIN
+    IF public.plan_limit_for_agency('10000000-0000-0000-0000-000000000001', 'properties') IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL T41: anon read agency A plan limits';
+    END IF;
+    IF public.count_agency_metric('10000000-0000-0000-0000-000000000001', 'properties') IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL T41: anon read agency A record counts';
+    END IF;
+    RAISE NOTICE 'PASS T41: anon gets null from every helper';
+  EXCEPTION WHEN insufficient_privilege OR undefined_function THEN
+    RAISE NOTICE 'PASS T41: anon has no EXECUTE on the helpers at all';
+  END;
 END $$;
 RESET ROLE;
 

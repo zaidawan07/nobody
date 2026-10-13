@@ -32,6 +32,14 @@ CREATE TABLE public.notifications (
 CREATE INDEX notifications_user_idx ON public.notifications (user_id, created_at DESC);
 CREATE INDEX notifications_unread_idx ON public.notifications (user_id) WHERE read_at IS NULL;
 
+-- New tables in public inherit anon=ALL from the schema's default ACL
+-- (verified live: grantor=postgres, schema=public, objtype=r grants
+-- anon=arwdDxtm). RLS is what actually refuses anon on this table, but a
+-- table-level grant is the same erosion 0009 fixed for functions, so take
+-- it back explicitly. This only touches anon and PUBLIC, so the explicit
+-- grants below are unaffected.
+REVOKE ALL ON public.notifications FROM anon, PUBLIC;
+
 GRANT SELECT ON public.notifications TO authenticated;
 GRANT INSERT, UPDATE ON public.notifications TO authenticated;
 GRANT ALL ON public.notifications TO service_role;

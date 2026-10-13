@@ -103,13 +103,36 @@ Consequence: `drizzle-kit migrate` cannot reconcile this database, because it wo
 | Employee assignment scope | Working | `can_access_assigned_record` in 0001 policies |
 | Storage access policies | Working | `property-media` bucket + policies |
 | Cross-tenant FK integrity | Working | `validate_tenant_link` and `validate_*_links` triggers (0004) |
-| Super-admin conversation access | **Working — no change needed** | 0003 dropped `super admin access conversations` / `super admin access conversation_messages`. The live catalog shows only assigned/delete policies, so a super admin cannot read agency conversations. |
+| Super-admin conversation access | **Fixed — 0012 (pending, unapplied)** | `can_access_assigned_record()` still begins with `is_super_admin() OR ...` and is the USING/CHECK expression of the `assigned read/insert/update` policies on **both** `conversations` and `conversation_messages`; `admin delete` uses `is_super_admin() OR is_agency_admin(agency_id)`. A super admin currently reads, inserts, updates and deletes them. |
 
-> **Correction.** An earlier version of this audit recorded super-admin
-> conversation access as a gap, based on an intermediate live-schema probe.
-> That was wrong: migration 0003 already removed those policies, and the live
-> catalog confirms it. A support-access mechanism would therefore be
-> additional scope, not a required fix, and was not built.
+> **Correction, second time — this note was wrong twice and the first
+> "correction" was also wrong.** The earlier version of this audit recorded
+> super-admin conversation access as a gap. A later revision claimed 0003
+> already removed those policies and that the live catalogue confirmed it.
+> **That claim was wrong.** It was based on policy *names*, not on the helper
+> those policies call. 0003 dropped the two standalone `super admin access ...`
+> policies, which is what the name-level probe saw, but it left the `assigned
+> read` / `assigned insert` / `assigned update` policies pointing at
+> `can_access_assigned_record()` — and that helper starts with
+> `public.is_super_admin() OR ...`. So the super-admin branch survived through
+> the shared helper, which the name check could not see. Verified live
+> (read-only) on 2026-10-13: the helper's body starts with `is_super_admin()`,
+> and both tables still have `assigned read/insert/update` and `admin delete`
+> policies for `authenticated`.
+>
+> The fix is migration **0012**: these two tables get their own helper,
+> `can_access_assigned_conversation(agency_id, conversation_id)`, with **no
+> super-admin branch anywhere**, and all eight policies (SELECT/INSERT/UPDATE/
+> DELETE on both tables) are re-expressed against it. The shared helper keeps
+> its super-admin branch, because properties, leads, site_visits and the
+> media/checkin links legitimately let a platform owner correct a misassigned
+> record — that access is untouched.
+>
+> `test/08_super_admin_conversations.sql` asserts it. Before 0012 the same file
+> fails on T59–T64 (super admin saw 4 conversations, 3 messages, and could
+> insert, update and delete). After 0012 all 12 blocks pass, including that an
+> agency admin still sees their own rows and an employee still sees only
+> assigned ones.
 
 ### 2.3 Properties
 

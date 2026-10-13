@@ -30,6 +30,11 @@ CREATE TABLE public.property_reopen_log (
 CREATE INDEX property_reopen_log_property_idx ON public.property_reopen_log (property_id, created_at DESC);
 CREATE INDEX property_reopen_log_agency_idx ON public.property_reopen_log (agency_id, created_at DESC);
 
+-- Same reason as 0010: a new table inherits anon=ALL from the schema
+-- default ACL, so it is revoked explicitly. anon and PUBLIC only, so the
+-- grants below (and service_role) keep their access.
+REVOKE ALL ON public.property_reopen_log FROM anon, PUBLIC;
+
 GRANT SELECT ON public.property_reopen_log TO authenticated;
 GRANT ALL ON public.property_reopen_log TO service_role;
 ALTER TABLE public.property_reopen_log ENABLE ROW LEVEL SECURITY;
@@ -126,4 +131,11 @@ BEGIN
   UPDATE public.properties SET status = 'available' WHERE id = v_property.id;
 END $$;
 
+-- New functions in public inherit EXECUTE for anon/authenticated/service_role
+-- from the schema's default ACL, so the anon grant has to be removed
+-- explicitly as well.
+REVOKE EXECUTE ON FUNCTION public.reopen_property(uuid, text) FROM PUBLIC, anon;
+-- The guard trigger function runs only at fire time and is never called
+-- directly, so nobody but the owner needs it.
+REVOKE EXECUTE ON FUNCTION public.guard_property_status_transition() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reopen_property(uuid, text) TO authenticated;

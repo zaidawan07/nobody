@@ -1,0 +1,62 @@
+-- ============================================================================
+-- 0013: Stop new functions in public from granting EXECUTE to anon and PUBLIC
+--
+-- 0009 revoked EXECUTE from the functions that existed when it ran. It could
+-- not cover what came after it, because the schema's default ACL for
+-- objtype=f grants EXECUTE to anon, authenticated, service_role and postgres
+-- for every function created in public. Verified live (read-only):
+--   grantor=postgres schema=public objtype=f
+--     acl=postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,
+--         service_role=X/postgres
+-- That is exactly how 0009's fix eroded, and it is why every function this
+-- project adds now carries its own explicit REVOKE too (0010-0012).
+--
+-- This migration removes the anon and PUBLIC term from that default, so a
+-- function created later starts closed. A function that needs authenticated
+-- must now GRANT it explicitly, which is the point: the grant becomes a
+-- deliberate act rather than a default.
+--
+-- What this DOES cover:
+--   * functions created in schema public by the current role, from now on;
+--   * the PUBLIC and anon terms specifically (the implicit PUBLIC EXECUTE
+--     every function otherwise gets).
+--
+-- What this does NOT cover:
+--   * functions created before this migration -- 0009 revoked those, and
+--     0010-0012 revoke the ones they add;
+--   * functions created by a different role. There are TWO default ACL
+--     entries for public functions: grantor=postgres (this one) and
+--     grantor=supabase_admin. ALTER DEFAULT PRIVILEGES only ever touches the
+--     acting role's entry, so the supabase_admin entry survives and still
+--     grants anon. Anything created as supabase_admin (notably some
+--     Supabase dashboard/CLI actions) is still open until that entry is
+--     also revoked, which cannot be done from a migration running as
+--     postgres. This is a known, stated gap, not a fixed one.
+--   * tables, sequences or other object types -- only objtype=f is touched.
+--     Tables are NOT closed here on purpose: a new table that forgets its
+--     GRANT would silently lock out real users, which is a functional break
+--     rather than a security one, and RLS already refuses anon on a table
+--     with no anon policy. New tables revoke anon explicitly instead
+--     (0010, 0011).
+--   * SECURITY DEFINER itself: an already over-granted function stays
+--     over-granted until something revokes it.
+--
+-- ALTER DEFAULT PRIVILEGES is idempotent and only affects newly created
+-- objects, so re-running it is safe. It is also NOT implemented by PGlite,
+-- the in-process Postgres the local test battery uses, so the local suite
+-- cannot exercise this file at all: test/09 asserts the explicit REVOKEs
+-- instead, and this default-ACL change has to be confirmed against live
+-- before anyone relies on it.
+-- ============================================================================
+
+-- Remove the default EXECUTE for anon and PUBLIC from new functions in public.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon;
+
+-- Belt and braces on the current role's defaults: also drop authenticated, so
+-- a new function starts closed and is opened only where a migration says so.
+-- service_role and the owner stay implicit on purpose.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM authenticated;
+
+-- Re-state the grants the app actually needs for new functions, so the
+-- default closed state does not surprise anyone reading a later migration.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO service_role;

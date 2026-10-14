@@ -41,6 +41,19 @@ function messageBody(message: Record<string, unknown>): string | null {
 }
 
 
+
+function createSupabaseFetch(apiKey: string): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(input instanceof Request ? input.headers : undefined);
+    new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
+    if (apiKey.startsWith("sb_secret_") && headers.get("Authorization") === "Bearer " + apiKey) {
+      headers.delete("Authorization");
+    }
+    headers.set("apikey", apiKey);
+    return fetch(input, { ...init, headers });
+  };
+}
+
 type WhatsAppConfig = {
   ai_enabled: boolean;
   ai_greeting: string | null;

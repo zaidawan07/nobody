@@ -46,6 +46,7 @@ function PropertiesPage() {
   const [title, setTitle] = useState("");
   const [city, setCity] = useState("");
   const [price, setPrice] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
   const [type, setType] = useState<PropertyType>("house");
   const [purpose, setPurpose] = useState<Purpose>("sale");
 
@@ -60,6 +61,33 @@ function PropertiesPage() {
       return data;
     },
   });
+
+  const media = useQuery({
+    queryKey: ["property-media", access.data?.agencyId],
+    enabled: !!access.data,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("property_media")
+        .select("id,agency_id,property_id,storage_path,caption,sort_order")
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return Promise.all((data ?? []).map(async (item) => {
+        const { data: signed } = await supabase.storage.from("property-media").createSignedUrl(item.storage_path, 3600);
+        return { ...item, signedUrl: signed?.signedUrl ?? null };
+      }));
+    },
+  });
+
+  const mediaByProperty = useMemo(() => {
+    const grouped = new Map<string, { count: number; thumbnail: string | null }>();
+    for (const item of media.data ?? []) {
+      const existing = grouped.get(item.property_id) ?? { count: 0, thumbnail: null };
+      existing.count += 1;
+      existing.thumbnail ??= item.signedUrl;
+      grouped.set(item.property_id, existing);
+    }
+    return grouped;
+  }, [media.data]);
 
   const filteredProperties = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -79,6 +107,7 @@ function PropertiesPage() {
     setTitle("");
     setCity("");
     setPrice("");
+    setPhotos([]);
     setType("house");
     setPurpose("sale");
     setError("");
@@ -110,7 +139,17 @@ function PropertiesPage() {
       return;
     }
 
+    if (photos.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024)) {
+      setError("Photos must be JPG, PNG, or WebP files no larger than 10 MB each.");
+      return;
+    }
+    if (photos.length > 8) {
+      setError("Upload up to 8 photos per save.");
+      return;
+    }
+
     setBusy(true);
+    let savedPropertyId: string | null = null;
     try {
       const values = {
         title: title.trim(),
@@ -119,20 +158,56 @@ function PropertiesPage() {
         property_type: type,
         purpose,
       };
-      const result = editingId
-        ? await supabase.from("properties").update(values).eq("id", editingId)
-        : await supabase.from("properties").insert({
-            ...values,
-            agency_id: access.data.agencyId,
-            created_by: access.data.userId,
-          });
+      if (editingId) {
+        const result = await supabase.from("properties").update(values).eq("id", editingId).select("id").single();
+        if (result.error) throw result.error;
+        savedPropertyId = result.data.id;
+      } else {
+        const result = await supabase.from("properties").insert({
+          ...values,
+          agency_id: access.data.agencyId,
+          created_by: access.data.userId,
+        }).select("id").single();
+        if (result.error) throw result.error;
+        savedPropertyId = result.data.id;
+      }
 
-      if (result.error) throw result.error;
+      for (const [index, file] of photos.entries()) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "photo";
+        const storagePath = `${access.data.agencyId}/${savedPropertyId}/${crypto.randomUUID()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage.from("property-media").upload(storagePath, file, {
+          contentType: file.type,
+          cacheControl: "3600",
+          upsert: false,
+        });
+        if (uploadError) throw new Error("Property saved, but a photo could not be uploaded. Verify the property-media storage migration and permissions.");
+        const { error: mediaError } = await supabase.from("property_media").insert({
+          agency_id: access.data.agencyId,
+          property_id: savedPropertyId,
+          kind: "photo",
+          storage_path: storagePath,
+          sort_order: (mediaByProperty.get(savedPropertyId)?.count ?? 0) + index,
+        });
+        if (mediaError) {
+          setError("Property saved, but a photo record could not be saved. Contact the administrator before retrying that photo.");
+          throw mediaError;
+        }
+      }
+
       resetForm();
       setShowForm(false);
-      await client.invalidateQueries({ queryKey: ["properties"] });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["properties"] }),
+        client.invalidateQueries({ queryKey: ["property-media"] }),
+      ]);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save the property.");
+      if (savedPropertyId) {
+        await Promise.all([
+          client.invalidateQueries({ queryKey: ["properties"] }),
+          client.invalidateQueries({ queryKey: ["property-media"] }),
+        ]);
+      }
     } finally {
       setBusy(false);
     }
@@ -215,6 +290,11 @@ function PropertiesPage() {
             </select>
           </label>
           <label className="space-y-1.5 text-sm font-medium">
+            Property photos (JPG, PNG, WebP; max 10 MB each)
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(event) => setPhotos(Array.from(event.target.files ?? []).slice(0, 8))} className="mt-1 block w-full text-xs font-normal file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2" />
+            {photos.length ? <span className="block text-xs text-muted-foreground">{photos.length} photo(s) selected</span> : null}
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
             Price in PKR
             <input
               type="number"
@@ -289,16 +369,20 @@ function PropertiesPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3">Property</th>
+                  <th className="px-4 py-3">Photo</th><th className="px-4 py-3">Property</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Price</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Photos</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredProperties.map((property) => (
                   <tr key={property.id}>
+                    <td className="px-4 py-4">
+                      {mediaByProperty.get(property.id)?.thumbnail ? <img src={mediaByProperty.get(property.id)?.thumbnail ?? ""} alt="" loading="lazy" className="size-12 rounded-md object-cover" /> : <span className="flex size-12 items-center justify-center rounded-md bg-muted"><Home className="size-5 text-muted-foreground" /></span>}
+                    </td>
                     <td className="px-4 py-4">
                       <p className="font-medium">{property.title}</p>
                       <p className="text-xs text-muted-foreground">{property.city || "City not set"}</p>
@@ -317,6 +401,7 @@ function PropertiesPage() {
                         {statuses.map((item) => <option key={item} value={item}>{item}</option>)}
                       </select>
                     </td>
+                    <td className="px-4 py-4 text-xs text-muted-foreground">{mediaByProperty.get(property.id)?.count ?? 0}</td>
                     <td className="px-4 py-4">
                       <button
                         onClick={() => startEditing(property)}

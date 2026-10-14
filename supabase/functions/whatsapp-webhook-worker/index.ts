@@ -155,7 +155,7 @@ Deno.serve(async (request) => {
     .from("whatsapp_webhook_events")
     .update({ status: "received", locked_at: null, next_attempt_at: nowIso, last_error: "Recovered stale worker claim." })
     .eq("status", "processing")
-    .lt("locked_at", staleBefore);
+    .or(`locked_at.is.null,locked_at.lt.${staleBefore}`);
   if (recoveryError) return new Response("Queue recovery failed", { status: 500 });
 
   const { data: queued, error: queueError } = await admin

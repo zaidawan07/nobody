@@ -898,6 +898,10 @@ export type Database = {
       }
       is_agency_admin: { Args: { _agency_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      resolve_subscription_change_request: {
+        Args: { _request_id: string; _decision: string; _actor_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       account_status: "active" | "suspended" | "pending"

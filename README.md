@@ -41,6 +41,8 @@ bun run lint
 bun run typecheck
 bun run test
 bun run build
+bun run secrets:check
+bun run env:check
 ```
 
 Edge Function source checks:
@@ -75,7 +77,7 @@ Meta WhatsApp variables (configure only during the final integration phase):
 - `AI_MAX_REPLIES_PER_AGENCY_PER_DAY` — defaults to `500`.
 - `AI_MAX_REPLIES_PER_CONVERSATION_PER_HOUR` — defaults to `20`.
 
-Set server-side secrets in the hosting environment and Edge Function secrets in Supabase. Do not commit real credentials. The service-role key, Meta app secret, encryption key, and bootstrap secret must never be sent to the browser.
+Set server-side secrets in the hosting environment and Edge Function secrets in Supabase. Do not commit real credentials. Before connecting a provider, run `bun run env:check` for the base Supabase configuration, `bun run env:check -- --bootstrap` when preparing first-owner bootstrap, `bun run env:check -- --whatsapp` for Meta setup, or `bun run env:check -- --ai` to validate the full WhatsApp + AI environment. The checker reports variable names and configuration errors only; it never prints secret values. The service-role key, Meta app secret, encryption key, and bootstrap secret must never be sent to the browser.
 
 ## Database and storage
 

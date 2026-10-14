@@ -35,6 +35,10 @@ AS $$
     AND a.status = 'active';
 $$;
 
+-- Client-side provisioning is not permitted; trusted server functions use service_role.
+REVOKE INSERT, DELETE ON TABLE public.agencies FROM PUBLIC, anon, authenticated;
+REVOKE INSERT, DELETE ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
+
 -- Agency administrators may edit descriptive fields, but cannot reactivate
 -- a suspended agency by directly changing its status through PostgREST.
 -- Trusted server-side platform-owner functions use the service-role client.

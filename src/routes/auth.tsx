@@ -101,7 +101,11 @@ function AuthPage() {
           <div className="mb-6 flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><KeyRound className="size-5" /></div>
           <h2 className="text-2xl font-semibold">{mode === "signin" ? "Welcome back" : mode === "reset" ? "Reset your password" : "Choose a new password"}</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            {mode === "signin" ? "Use the email and password provided by your platform or agency administrator." : "We'll email you a secure password reset link if the account exists."}
+            {mode === "signin"
+              ? "Use the email and password provided by your platform or agency administrator."
+              : mode === "reset"
+                ? "We'll email you a secure password reset link if the account exists."
+                : "Choose a new password for your account."}
           </p>
           <form className="mt-6 space-y-4" onSubmit={submit}>
             <div className="space-y-2">

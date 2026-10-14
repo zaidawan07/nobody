@@ -101,7 +101,7 @@ async function processEvent(admin: AdminClient, event: WebhookEvent) {
         const normalizedBody = body?.trim().toLocaleUpperCase();
         const optOutKeywords = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REMOVE", "بند", "روکیں"]);
         if (normalizedBody && optOutKeywords.has(normalizedBody)) {
-          const { error: optOutError } = await admin.from("conversations").update({ opted_out_at: timestamp, opt_out_reason: body.slice(0, 200), state: "closed", handoff_requested: false }).eq("id", conversation.id).eq("agency_id", event.agency_id);
+          const { error: optOutError } = await admin.from("conversations").update({ opted_out_at: timestamp, opt_out_reason: (body ?? "").slice(0, 200), state: "closed", handoff_requested: false }).eq("id", conversation.id).eq("agency_id", event.agency_id);
           if (optOutError) throw new Error("Could not persist the customer opt-out request.");
         }
         // Do not reset state here: human takeover must survive subsequent customer replies.

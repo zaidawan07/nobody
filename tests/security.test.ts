@@ -298,6 +298,6 @@ describe("conversation inbox server boundaries", () => {
     expect(route).toContain("createInternalNote");
     expect(route).toContain("Search conversations");
     expect(route).toContain("unread_count");
-    expect(route).toContain("Load older");
+    expect(route).toContain("Page {Math.min(page, pageCount)} of {pageCount}");
   });
 });

@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS public.agency_subscriptions (
   current_period_end timestamptz,
   trial_ends_at timestamptz,
   cancel_at_period_end boolean NOT NULL DEFAULT false,
-  provider text NOT NULL DEFAULT 'manual' CHECK (provider IN ('manual', 'stripe')),
+  provider text NOT NULL DEFAULT 'manual',
   provider_customer_id text,
   provider_subscription_id text,
   created_at timestamptz NOT NULL DEFAULT now(),

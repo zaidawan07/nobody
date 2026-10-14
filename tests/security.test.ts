@@ -49,9 +49,9 @@ describe("database security migrations", () => {
     for (const path of migrationFiles) {
       const sql = readFileSync(new URL(path, import.meta.url), "utf8");
       const delimiters = sql.match(/\$\$/g) ?? [];
-      expect(delimiters.length % 2, path).toBe(0);
-      expect(sql, path).not.toMatch(/AS \$(?:\r?\n)/);
-      expect(sql, path).not.toMatch(/^\$;$/m);
+      expect(delimiters.length % 2).toBe(0);
+      expect(sql).not.toMatch(/AS \$(?:\r?\n)/);
+      expect(sql).not.toMatch(/^\$;$/m);
     }
   });
 

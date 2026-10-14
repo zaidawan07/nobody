@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-type AdminClient = SupabaseClient<any>;
+type AdminClient = SupabaseClient<any, "public", any>;
 
 type WebhookEvent = {
   id: string;
@@ -71,7 +71,7 @@ async function findOrCreateConversation(admin: AdminClient, event: WebhookEvent,
   throw new Error("Could not create the customer conversation.");
 }
 
-async function processEvent(admin: ReturnType<typeof createClient>, event: WebhookEvent) {
+async function processEvent(admin: AdminClient, event: WebhookEvent) {
   for (const entry of event.payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value;
@@ -133,7 +133,7 @@ Deno.serve(async (request) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const admin = createClient<any>(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient<any, "public", any>(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: queued, error: queueError } = await admin
     .from("whatsapp_webhook_events")
     .select("id,agency_id,phone_number_id,payload,attempts")

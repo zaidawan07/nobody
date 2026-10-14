@@ -271,32 +271,65 @@ export type Database = {
         Row: {
           agency_id: string
           body: string | null
+          client_request_id: string | null
           conversation_id: string
           created_at: string
+          created_by: string | null
+          delivered_at: string | null
+          error_code: string | null
+          error_message: string | null
+          failed_at: string | null
           id: string
           media_url: string | null
+          message_kind: string
+          provider_message_id: string | null
+          provider_status: string | null
+          read_at: string | null
           referenced_property_id: string | null
           sender: Database["public"]["Enums"]["message_sender"]
+          sent_at: string | null
         }
         Insert: {
           agency_id: string
           body?: string | null
+          client_request_id?: string | null
           conversation_id: string
           created_at?: string
+          created_by?: string | null
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
           id?: string
           media_url?: string | null
+          message_kind?: string
+          provider_message_id?: string | null
+          provider_status?: string | null
+          read_at?: string | null
           referenced_property_id?: string | null
           sender: Database["public"]["Enums"]["message_sender"]
+          sent_at?: string | null
         }
         Update: {
           agency_id?: string
           body?: string | null
+          client_request_id?: string | null
           conversation_id?: string
           created_at?: string
+          created_by?: string | null
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
           id?: string
           media_url?: string | null
+          message_kind?: string
+          provider_message_id?: string | null
+          provider_status?: string | null
+          read_at?: string | null
           referenced_property_id?: string | null
           sender?: Database["public"]["Enums"]["message_sender"]
+          sent_at?: string | null
         }
         Relationships: [
           {
@@ -332,9 +365,14 @@ export type Database = {
           handoff_reason: string | null
           handoff_requested: boolean
           id: string
+          last_customer_message_at: string | null
           last_message_at: string | null
+          last_read_at: string | null
           lead_id: string | null
+          opt_out_reason: string | null
+          opted_out_at: string | null
           state: Database["public"]["Enums"]["conversation_state"]
+          unread_count: number
           updated_at: string
         }
         Insert: {
@@ -346,9 +384,14 @@ export type Database = {
           handoff_reason?: string | null
           handoff_requested?: boolean
           id?: string
+          last_customer_message_at?: string | null
           last_message_at?: string | null
+          last_read_at?: string | null
           lead_id?: string | null
+          opt_out_reason?: string | null
+          opted_out_at?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
+          unread_count?: number
           updated_at?: string
         }
         Update: {
@@ -360,9 +403,14 @@ export type Database = {
           handoff_reason?: string | null
           handoff_requested?: boolean
           id?: string
+          last_customer_message_at?: string | null
           last_message_at?: string | null
+          last_read_at?: string | null
           lead_id?: string | null
+          opt_out_reason?: string | null
+          opted_out_at?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
+          unread_count?: number
           updated_at?: string
         }
         Relationships: [

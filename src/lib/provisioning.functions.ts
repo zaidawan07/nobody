@@ -299,6 +299,9 @@ export const updateSubscriptionPlan = createServerFn({ method: "POST" })
     if (existing.code === "starter" && !data.isActive) {
       throw new Error("The Starter plan must remain active as the default for new agencies.");
     }
+    if (existing.code === "starter" && (data.monthlyPricePkr !== 0 || data.annualPricePkr !== 0)) {
+      throw new Error("The Starter plan remains free; set both prices to zero.");
+    }
     const { error } = await supabaseAdmin.from("subscription_plans").update({
       monthly_price_pkr: data.monthlyPricePkr,
       annual_price_pkr: data.annualPricePkr,

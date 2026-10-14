@@ -171,7 +171,6 @@ function WhatsAppSettings() {
       ai_language: language,
       ai_tone: tone,
       auto_create_leads: autoLead,
-      ai_enabled: false,
     }).eq("agency_id", config.data.agency_id);
     setBusy(false);
     if (error) { setNotice(error.message); return; }

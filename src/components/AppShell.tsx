@@ -10,6 +10,7 @@ import {
   UserSquare2,
   CalendarCheck,
   Bot,
+  BarChart3,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,6 +35,7 @@ const agencyNav: NavItem[] = [
   { to: "/leads", label: "Leads", icon: <UserSquare2 className="size-4" /> },
   { to: "/visits", label: "Site visits", icon: <CalendarCheck className="size-4" /> },
   { to: "/conversations", label: "WhatsApp inbox", icon: <MessageSquare className="size-4" /> },
+  { to: "/reports", label: "Reports & exports", icon: <BarChart3 className="size-4" /> },
 ];
 
 export function AppShell({

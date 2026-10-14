@@ -183,6 +183,7 @@ describe("WhatsApp consent and handoff rules", () => {
   it("recognizes common opt-out commands case-insensitively and with punctuation", () => {
     expect(isOptOutRequest(" STOP!!! ")).toBe(true);
     expect(isOptOutRequest("unsubscribe")).toBe(true);
+    expect(isOptOutRequest("Please stop")).toBe(true);
     expect(isOptOutRequest("Please stop messaging me.")).toBe(true);
     expect(isOptOutRequest("بند کریں")).toBe(true);
   });

@@ -112,6 +112,17 @@ async function deterministicRequestId(value: string): Promise<string> {
   return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
 }
 
+
+function isOptOutRequest(body: string): boolean {
+  const normalized = body.trim().toLocaleUpperCase().replace(/[.!?,;]+$/g, "").trim();
+  const phrases = [
+    "STOP", "STOP ALL", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REMOVE",
+    "OPT OUT", "OPT-OUT", "PLEASE STOP", "STOP MESSAGING", "DO NOT MESSAGE", "DON'T MESSAGE",
+    "روکیں", "بند کریں", "مزید پیغام نہ بھیجیں",
+  ];
+  return phrases.some((phrase) => normalized === phrase || normalized.startsWith(phrase + " "));
+}
+
 function isHandoffRequest(body: string, configuredKeywords: string[] | null | undefined): boolean {
   const normalized = body.trim().toLocaleLowerCase();
   const defaults = ["human", "real person", "live agent", "talk to agent", "speak to someone", "representative", "call me", "انسان", "ایجنٹ", "نمائندہ"];
@@ -507,12 +518,22 @@ async function processEvent(admin: AdminClient, event: WebhookEvent) {
         }, { onConflict: "provider_message_id", ignoreDuplicates: true });
         if (messageError) throw new Error("Could not persist an incoming WhatsApp message.");
 
-        const normalizedBody = body?.trim().toLocaleUpperCase();
-        const optOutKeywords = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REMOVE", "بند", "روکیں"]);
-        if (normalizedBody && optOutKeywords.has(normalizedBody)) {
+        const normalizedBody = body?.trim().toLocaleUpperCase().replace(/[.!?,;]+$/g, "").trim();
+        if (normalizedBody === "START" && conversation.opted_out_at) {
+          const { error: optInError } = await admin.from("conversations").update({
+            opted_out_at: null,
+            opt_out_reason: null,
+            state: "ai_active",
+            handoff_requested: false,
+            handoff_reason: null,
+          }).eq("id", conversation.id).eq("agency_id", event.agency_id);
+          if (optInError) throw new Error("Could not persist the customer opt-in request.");
+          continue;
+        }
+        if (body && isOptOutRequest(body)) {
           const { error: optOutError } = await admin.from("conversations").update({
             opted_out_at: timestamp,
-            opt_out_reason: (body ?? "").slice(0, 200),
+            opt_out_reason: body.slice(0, 200),
             state: "closed",
             handoff_requested: false,
           }).eq("id", conversation.id).eq("agency_id", event.agency_id);

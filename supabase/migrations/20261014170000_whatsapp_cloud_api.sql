@@ -74,6 +74,16 @@ GRANT ALL ON TABLE public.whatsapp_webhook_events TO service_role;
 CREATE INDEX IF NOT EXISTS whatsapp_webhook_events_queue_idx
   ON public.whatsapp_webhook_events (status, received_at);
 
+-- Only agency administrators may read or change WhatsApp assistant settings.
+-- The generic tenant-member policy from the foundation migration is too broad here.
+DROP POLICY IF EXISTS "tenant members access whatsapp_configs" ON public.whatsapp_configs;
+CREATE POLICY "agency admins read WhatsApp config" ON public.whatsapp_configs
+  FOR SELECT TO authenticated USING (public.is_agency_admin(agency_id));
+CREATE POLICY "agency admins update WhatsApp config" ON public.whatsapp_configs
+  FOR UPDATE TO authenticated
+  USING (public.is_agency_admin(agency_id))
+  WITH CHECK (public.is_agency_admin(agency_id));
+
 -- Encrypted access tokens and connection metadata must never be selectable or
 -- writable by tenant browsers. The browser gets only safe configuration fields.
 REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE public.whatsapp_configs FROM PUBLIC, anon, authenticated;

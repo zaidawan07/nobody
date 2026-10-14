@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { Building2, CalendarCheck, Home, MessageSquare, UserSquare2, ArrowUpRight } from "lucide-react";
+import { Building2, CalendarCheck, ClipboardList, Home, MessageSquare, UserSquare2, ArrowUpRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccess } from "@/hooks/useAccess";
@@ -20,6 +20,7 @@ function AgencyDashboard() {
   const metrics = [
     { key: "properties", label: "Properties", icon: Home, to: "/properties", table: "properties" as const, note: "Track active inventory" },
     { key: "leads", label: "Leads", icon: UserSquare2, to: "/leads", table: "leads" as const, note: "Keep follow-ups moving" },
+    { key: "tasks", label: "Follow-up tasks", icon: ClipboardList, to: "/tasks", table: "agency_tasks" as const, note: "Track the next action" },
     { key: "visits", label: "Site visits", icon: CalendarCheck, to: "/visits", table: "site_visits" as const, note: "Coordinate property viewings" },
     { key: "conversations", label: "Conversations", icon: MessageSquare, to: "/conversations", table: "conversations" as const, note: "Customer chats and handoffs" },
   ];

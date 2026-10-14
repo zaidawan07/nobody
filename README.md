@@ -61,6 +61,7 @@ Client build-time variables:
 Server-only variables:
 
 - `SUPABASE_URL` — project URL.
+- `SUPABASE_PUBLISHABLE_KEY` — the same public/publishable key used by the browser; never use a secret key here.
 - `SUPABASE_SERVICE_ROLE_KEY` — privileged service-role key; **never** prefix it with `VITE_` or expose it to the browser.
 - `PLATFORM_BOOTSTRAP_SECRET` — high-entropy one-time platform-owner bootstrap secret.
 

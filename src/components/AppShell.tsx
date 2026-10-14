@@ -11,6 +11,7 @@ import {
   CalendarCheck,
   Bot,
   BarChart3,
+  Settings,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +28,7 @@ interface NavItem {
 
 const platformNav: NavItem[] = [
   { to: "/platform", label: "Agencies", icon: <Building2 className="size-4" /> },
+  { to: "/settings", label: "My profile", icon: <Settings className="size-4" /> },
 ];
 
 const agencyNav: NavItem[] = [
@@ -36,6 +38,7 @@ const agencyNav: NavItem[] = [
   { to: "/visits", label: "Site visits", icon: <CalendarCheck className="size-4" /> },
   { to: "/conversations", label: "WhatsApp inbox", icon: <MessageSquare className="size-4" /> },
   { to: "/reports", label: "Reports & exports", icon: <BarChart3 className="size-4" /> },
+  { to: "/settings", label: "My profile", icon: <Settings className="size-4" /> },
 ];
 
 export function AppShell({

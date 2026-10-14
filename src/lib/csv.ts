@@ -6,7 +6,7 @@
  */
 function safeCell(value: unknown): string {
   let text = value == null ? "" : value instanceof Date ? value.toISOString() : String(value);
-  if (/^[\s\u0000-\u001f]*[=+@-]/.test(text)) text = "'" + text;
+  if (/^\s*[=+@-]/.test(text)) text = "'" + text;
   return '"' + text.replace(/"/g, '""') + '"';
 }
 

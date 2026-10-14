@@ -119,6 +119,16 @@ A feature is not considered complete merely because its screen exists. It must p
 
 **Exit criteria:** an operator can detect and recover from a failed worker or integration; a test customer can onboard without developer database access.
 
+## Latest implementation pass — 2026-10-14
+
+The remediation branch now also contains these code-level improvements:
+
+- Conversation inbox search, state filtering, paginated conversation lists, team assignment through server-validated actions, unread counts, and private internal notes.
+- Browser-side INSERT/UPDATE/DELETE on conversation messages is revoked; trusted server functions handle outbound messages and internal notes.
+- Lead activity history records creation, status changes, assignment changes, general detail changes, and communication metadata without copying message bodies into activity metadata.
+- A safe environment preflight command (`bun run env:check`), a current-working-tree secret scanner (`bun run secrets:check`), CodeQL, Dependabot, and disposable Supabase migration validation are included.
+- Full CI, CodeQL, Edge Function checks, and clean migration apply/schema lint passed on the earlier source head `2166a2d8a608259284464e0565917c4beba83b90`. Conversation inbox changes and the expanded SQL smoke test were added afterward; rerun those checks on the latest branch head before treating them as verified.
+
 ## Deployment sequence (approval required)
 
 1. Prepare a disposable/staging Supabase project and staging Meta app/number.

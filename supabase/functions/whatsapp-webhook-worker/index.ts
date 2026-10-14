@@ -59,17 +59,21 @@ function decodeBase64(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
 async function decryptAccessToken(encryptedValue: string, keyBase64: string): Promise<string> {
   const parts = encryptedValue.split(":");
   const rawKey = decodeBase64(keyBase64);
   if (parts.length !== 3 || parts[0] !== "v1" || rawKey.length !== 32) {
     throw new Error("WhatsApp token encryption configuration is invalid.");
   }
-  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
+  const key = await crypto.subtle.importKey("raw", asArrayBuffer(rawKey), { name: "AES-GCM" }, false, ["decrypt"]);
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: decodeBase64(parts[1] ?? "") },
+    { name: "AES-GCM", iv: asArrayBuffer(decodeBase64(parts[1] ?? "")) },
     key,
-    decodeBase64(parts[2] ?? ""),
+    asArrayBuffer(decodeBase64(parts[2] ?? "")),
   );
   return new TextDecoder().decode(plaintext);
 }
@@ -454,7 +458,7 @@ async function findOrCreateConversation(admin: AdminClient, event: WebhookEvent,
   if (createError?.code === "23505") {
     const { data: raced, error: raceError } = await admin
       .from("conversations")
-      .select("id,state,handoff_requested,lead_id,opted_out_at,last_customer_message_at,last_message_at")
+      .select("id,customer_phone,state,handoff_requested,lead_id,opted_out_at,last_customer_message_at,last_message_at")
       .eq("agency_id", event.agency_id)
       .eq("customer_phone", phone)
       .single();

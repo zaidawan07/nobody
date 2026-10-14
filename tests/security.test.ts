@@ -78,3 +78,34 @@ describe("database security migrations", () => {
     expect(sql).toContain("dead_lettered_at");
   });
 });
+
+
+import { toCsv } from "../src/lib/csv";
+
+describe("spreadsheet CSV exports", () => {
+  it("quotes fields and escapes embedded quotes and line breaks", () => {
+    const csv = toCsv([{ name: 'A "quoted" name', notes: "line one\nline two" }], [
+      { key: "name", label: "Name" },
+      { key: "notes", label: "Notes" },
+    ]);
+    expect(csv).toContain('"A ""quoted"" name"');
+    expect(csv).toContain('"line one\nline two"');
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+  });
+
+  it("neutralizes spreadsheet formula prefixes in user-controlled fields", () => {
+    const csv = toCsv([{ name: "=IMPORTXML(\"https://example.com\",\"//x\")", phone: "+12345", notes: "@SUM(A1:A2)" }], [
+      { key: "name", label: "Name" },
+      { key: "phone", label: "Phone" },
+      { key: "notes", label: "Notes" },
+    ]);
+    expect(csv).toContain("'=IMPORTXML");
+    expect(csv).toContain("'+12345");
+    expect(csv).toContain("'@SUM");
+  });
+
+  it("exports empty data as a header-only document", () => {
+    const csv = toCsv([] as Array<{ name: string }>, [{ key: "name", label: "Name" }]);
+    expect(csv).toBe("\uFEFF\"Name\"\r\n");
+  });
+});

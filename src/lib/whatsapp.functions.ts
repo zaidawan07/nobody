@@ -96,9 +96,9 @@ async function metaJson(url: URL, token?: string, method = "GET", body?: Record<
     headers: { ...(token ? { Authorization: "Bearer " + token } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) throw new Error("Meta API request failed (HTTP " + response.status + ").");
-  return body;
+  return payload;
 }
 
 export const createWhatsAppConnectionSession = createServerFn({ method: "POST" })

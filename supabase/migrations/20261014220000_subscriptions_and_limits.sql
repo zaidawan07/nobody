@@ -113,8 +113,10 @@ BEGIN
     RETURN NEW;
   END IF;
   IF TG_TABLE_NAME = 'profiles' THEN
-    IF TG_OP = 'UPDATE' AND NEW.agency_id IS NOT DISTINCT FROM OLD.agency_id AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
-      RETURN NEW;
+    IF TG_OP = 'UPDATE' THEN
+      IF NEW.agency_id IS NOT DISTINCT FROM OLD.agency_id AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
+        RETURN NEW;
+      END IF;
     END IF;
     IF NEW.status = 'suspended' THEN
       RETURN NEW;

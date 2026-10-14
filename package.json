@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "secrets:check": "bun run scripts/check-secrets.ts"
+    "secrets:check": "bun run scripts/check-secrets.ts",
+    "env:check": "bun run scripts/check-env.ts"
   },
   "overrides": {
     "rolldown": "1.2.1"

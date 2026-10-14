@@ -12,6 +12,7 @@ type Purpose = Database["public"]["Enums"]["property_purpose"];
 type Status = Database["public"]["Enums"]["property_status"];
 type AreaUnit = Database["public"]["Enums"]["area_unit"];
 type PropertyRow = Database["public"]["Tables"]["properties"]["Row"];
+type PropertyMediaView = { id: string; agency_id: string; property_id: string; storage_path: string; caption: string | null; sort_order: number; signedUrl: string | null };
 
 export const Route = createFileRoute("/properties")({
   ssr: false,
@@ -61,6 +62,7 @@ function PropertiesPage() {
   const [featuresText, setFeaturesText] = useState("");
   const [price, setPrice] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
+  const [mediaActionId, setMediaActionId] = useState<string | null>(null);
   const [type, setType] = useState<PropertyType>("house");
   const [purpose, setPurpose] = useState<Purpose>("sale");
 
@@ -93,11 +95,12 @@ function PropertiesPage() {
   });
 
   const mediaByProperty = useMemo(() => {
-    const grouped = new Map<string, { count: number; thumbnail: string | null }>();
+    const grouped = new Map<string, { count: number; thumbnail: string | null; nextSortOrder: number }>();
     for (const item of media.data ?? []) {
-      const existing = grouped.get(item.property_id) ?? { count: 0, thumbnail: null };
+      const existing = grouped.get(item.property_id) ?? { count: 0, thumbnail: null, nextSortOrder: 0 };
       existing.count += 1;
       existing.thumbnail ??= item.signedUrl;
+      existing.nextSortOrder = Math.max(existing.nextSortOrder, item.sort_order + 1);
       grouped.set(item.property_id, existing);
     }
     return grouped;
@@ -134,6 +137,7 @@ function PropertiesPage() {
     setFeaturesText("");
     setPrice("");
     setPhotos([]);
+    setMediaActionId(null);
     setType("house");
     setPurpose("sale");
     setError("");
@@ -247,7 +251,7 @@ function PropertiesPage() {
           property_id: savedPropertyId,
           kind: "photo",
           storage_path: storagePath,
-          sort_order: (mediaByProperty.get(savedPropertyId)?.count ?? 0) + index,
+          sort_order: (mediaByProperty.get(savedPropertyId)?.nextSortOrder ?? 0) + index,
         });
         if (mediaError) {
           setError("Property saved, but a photo record could not be saved. Contact the administrator before retrying that photo.");
@@ -271,6 +275,82 @@ function PropertiesPage() {
       }
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function deletePhoto(item: PropertyMediaView) {
+    if (!access.data?.agencyId || access.data.role !== "agency_admin") {
+      setError("Only agency administrators can delete property photos.");
+      return;
+    }
+    setMediaActionId(item.id);
+    setError("");
+    try {
+      const { error: rowError } = await supabase.from("property_media")
+        .delete().eq("id", item.id).eq("agency_id", access.data.agencyId);
+      if (rowError) throw rowError;
+      const { error: storageError } = await supabase.storage.from("property-media").remove([item.storage_path]);
+      await client.invalidateQueries({ queryKey: ["property-media"] });
+      if (storageError) setError("The photo was removed from the listing, but its stored file could not be cleaned up. Ask an administrator to review storage.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not remove the photo.");
+    } finally {
+      setMediaActionId(null);
+    }
+  }
+
+  async function replacePhoto(item: PropertyMediaView, file: File) {
+    if (!access.data?.agencyId || access.data.role !== "agency_admin") {
+      setError("Only agency administrators can replace property photos.");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setError("Replacement photos must be JPG, PNG, or WebP files no larger than 10 MB.");
+      return;
+    }
+    setMediaActionId(item.id);
+    setError("");
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "photo";
+    const newPath = `${access.data.agencyId}/${item.property_id}/${crypto.randomUUID()}-${safeName}`;
+    try {
+      const { error: uploadError } = await supabase.storage.from("property-media").upload(newPath, file, {
+        contentType: file.type,
+        cacheControl: "3600",
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+      const { error: updateError } = await supabase.from("property_media")
+        .update({ storage_path: newPath })
+        .eq("id", item.id)
+        .eq("agency_id", access.data.agencyId);
+      if (updateError) {
+        await supabase.storage.from("property-media").remove([newPath]);
+        throw updateError;
+      }
+      const { error: cleanupError } = await supabase.storage.from("property-media").remove([item.storage_path]);
+      await client.invalidateQueries({ queryKey: ["property-media"] });
+      if (cleanupError) setError("The replacement is active, but the previous stored file could not be cleaned up.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not replace the photo.");
+    } finally {
+      setMediaActionId(null);
+    }
+  }
+
+  async function movePhoto(item: PropertyMediaView, direction: "up" | "down") {
+    setMediaActionId(item.id);
+    setError("");
+    try {
+      const { error: reorderError } = await supabase.rpc("reorder_property_media", {
+        _media_id: item.id,
+        _direction: direction,
+      });
+      if (reorderError) throw reorderError;
+      await client.invalidateQueries({ queryKey: ["property-media"] });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not reorder the photos.");
+    } finally {
+      setMediaActionId(null);
     }
   }
 
@@ -404,6 +484,35 @@ function PropertiesPage() {
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(event) => setPhotos(Array.from(event.target.files ?? []).slice(0, 8))} className="mt-1 block w-full text-xs font-normal file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2" />
             {photos.length ? <span className="block text-xs text-muted-foreground">{photos.length} photo(s) selected</span> : null}
           </label>
+          {editingId ? (
+            <div className="space-y-3 md:col-span-2 xl:col-span-4">
+              <div><h3 className="text-sm font-semibold">Existing photos</h3><p className="mt-1 text-xs text-muted-foreground">Move photos to change their display order. Replace or remove requires an agency administrator.</p></div>
+              {(media.data ?? []).filter((item) => item.property_id === editingId).length === 0 ? (
+                <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">No saved photos for this property yet.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {(media.data ?? []).filter((item) => item.property_id === editingId).map((item, index, items) => (
+                    <div key={item.id} className="rounded-lg border border-border p-3">
+                      {item.signedUrl ? <img src={item.signedUrl} alt={item.caption || "Property photo"} loading="lazy" className="h-32 w-full rounded-md object-cover" /> : <div className="flex h-32 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground">Preview unavailable</div>}
+                      <p className="mt-2 truncate text-xs text-muted-foreground">Photo {index + 1} of {items.length}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" disabled={!!mediaActionId || index === 0} onClick={() => void movePhoto(item, "up")} className="rounded-md border border-input px-2 py-1 text-xs disabled:opacity-40">Move up</button>
+                        <button type="button" disabled={!!mediaActionId || index === items.length - 1} onClick={() => void movePhoto(item, "down")} className="rounded-md border border-input px-2 py-1 text-xs disabled:opacity-40">Move down</button>
+                        {access.data?.role === "agency_admin" ? (
+                          <>
+                            <label className="cursor-pointer rounded-md border border-input px-2 py-1 text-xs">Replace
+                              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!mediaActionId} className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void replacePhoto(item as PropertyMediaView, file); }} />
+                            </label>
+                            <button type="button" disabled={!!mediaActionId} onClick={() => void deletePhoto(item as PropertyMediaView)} className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive disabled:opacity-40">{mediaActionId === item.id ? "Saving…" : "Remove"}</button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
           <label className="space-y-1.5 text-sm font-medium">
             Price in PKR
             <input

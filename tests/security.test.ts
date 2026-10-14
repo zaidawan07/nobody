@@ -263,5 +263,9 @@ describe("lead activity timeline isolation", () => {
     expect(sql).toContain("status_changed");
     expect(sql).toContain("assignment_changed");
     expect(sql).toContain("details_updated");
+    expect(sql).toContain("record_lead_communication_activity");
+    expect(sql).toContain("conversation_messages_record_lead_activity_after_insert");
+    expect(sql).toContain("WhatsApp message received");
+    expect(sql).not.toContain("NEW.body");
   });
 });

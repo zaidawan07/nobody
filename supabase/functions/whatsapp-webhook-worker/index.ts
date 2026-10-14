@@ -20,6 +20,10 @@ type WebhookEvent = {
   attempts: number;
 };
 
+const MAX_ATTEMPTS = 5;
+const BATCH_SIZE = 10;
+const STALE_LOCK_MS = 5 * 60 * 1000;
+
 const isoTimestamp = (value: unknown) => {
   const seconds = typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : new Date().toISOString();
@@ -104,7 +108,6 @@ async function processEvent(admin: AdminClient, event: WebhookEvent) {
           const { error: optOutError } = await admin.from("conversations").update({ opted_out_at: timestamp, opt_out_reason: (body ?? "").slice(0, 200), state: "closed", handoff_requested: false }).eq("id", conversation.id).eq("agency_id", event.agency_id);
           if (optOutError) throw new Error("Could not persist the customer opt-out request.");
         }
-        // Do not reset state here: human takeover must survive subsequent customer replies.
         if (kind === "unknown") console.info("Stored WhatsApp message with an unsupported message type.");
       }
 
@@ -142,20 +145,35 @@ Deno.serve(async (request) => {
   }
 
   const admin = createClient<any, "public", any>(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const staleBefore = new Date(now.getTime() - STALE_LOCK_MS).toISOString();
+
+  // Recover work abandoned by a crashed/timed-out worker. A stale event may be
+  // reclaimed by only one worker because the subsequent claim is conditional.
+  const { error: recoveryError } = await admin
+    .from("whatsapp_webhook_events")
+    .update({ status: "received", locked_at: null, next_attempt_at: nowIso, last_error: "Recovered stale worker claim." })
+    .eq("status", "processing")
+    .lt("locked_at", staleBefore);
+  if (recoveryError) return new Response("Queue recovery failed", { status: 500 });
+
   const { data: queued, error: queueError } = await admin
     .from("whatsapp_webhook_events")
     .select("id,agency_id,phone_number_id,payload,attempts")
     .eq("status", "received")
+    .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
     .order("received_at", { ascending: true })
-    .limit(10);
+    .limit(BATCH_SIZE);
   if (queueError) return new Response("Queue read failed", { status: 500 });
 
   let processed = 0;
   for (const candidate of (queued ?? []) as WebhookEvent[]) {
     const nextAttempt = candidate.attempts + 1;
+    const claimedAt = new Date().toISOString();
     const { data: claimed, error: claimError } = await admin
       .from("whatsapp_webhook_events")
-      .update({ status: "processing", attempts: nextAttempt })
+      .update({ status: "processing", attempts: nextAttempt, locked_at: claimedAt, next_attempt_at: null })
       .eq("id", candidate.id)
       .eq("status", "received")
       .select("id")
@@ -165,15 +183,25 @@ Deno.serve(async (request) => {
     try {
       await processEvent(admin, candidate);
       const { error } = await admin.from("whatsapp_webhook_events")
-        .update({ status: "processed", processed_at: new Date().toISOString(), last_error: null, payload: {} })
-        .eq("id", candidate.id);
+        .update({ status: "processed", processed_at: new Date().toISOString(), last_error: null, payload: {}, locked_at: null, next_attempt_at: null })
+        .eq("id", candidate.id)
+        .eq("status", "processing");
       if (error) throw new Error("Could not finalize the webhook event.");
       processed += 1;
     } catch (error) {
       const safeMessage = error instanceof Error ? error.message.slice(0, 500) : "Unknown processing error.";
+      const exhausted = nextAttempt >= MAX_ATTEMPTS;
+      const retryDelaySeconds = Math.min(60 * 2 ** (nextAttempt - 1), 3600);
       await admin.from("whatsapp_webhook_events")
-        .update({ status: nextAttempt >= 5 ? "failed" : "received", last_error: safeMessage })
-        .eq("id", candidate.id);
+        .update({
+          status: exhausted ? "failed" : "received",
+          locked_at: null,
+          next_attempt_at: exhausted ? null : new Date(Date.now() + retryDelaySeconds * 1000).toISOString(),
+          dead_lettered_at: exhausted ? new Date().toISOString() : null,
+          last_error: safeMessage,
+        })
+        .eq("id", candidate.id)
+        .eq("status", "processing");
       console.error("WhatsApp webhook event processing failed; retry count:", nextAttempt);
     }
   }

@@ -283,6 +283,13 @@ BEGIN
       provider_customer_id = NULL,
       provider_subscription_id = NULL,
       updated_at = now();
+
+    IF NOT EXISTS (
+      SELECT 1 FROM public.subscription_plans
+      WHERE id = v_plan_id AND max_ai_replies_per_day > 0
+    ) THEN
+      UPDATE public.whatsapp_configs SET ai_enabled = false WHERE agency_id = v_request.agency_id;
+    END IF;
   END IF;
 
   UPDATE public.subscription_change_requests

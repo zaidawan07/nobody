@@ -9,11 +9,15 @@ EstateOS is a multi-tenant real-estate operations app for Pakistani property age
 - **Platform owner:** provision agencies and suspend/reactivate agency workspaces.
 - **Agency workspace:** inventory, private property photos, leads and budgets in PKR, assignments, site visits, and due-dated follow-up tasks.
 - **Team and settings:** agency-admin and employee roles, account status controls, self-service profile settings, and agency contact/service-area settings.
-- **Reports:** activity KPIs and spreadsheet-safe CSV exports for properties, leads, and site visits.
+- **Reports and billing:** activity KPIs, spreadsheet-safe CSV exports, configurable subscription plans, usage dashboards, upgrade requests, and database-enforced property/lead/team limits.
 - **WhatsApp automation:** Meta Embedded Signup, encrypted server-side access tokens, signed webhook verification, durable event storage, delivery status updates, opt-out/handoff handling, bounded AI replies using agency inventory, automatic lead capture, and a retrying worker.
 - **Security:** tenant-scoped database policies, same-agency relationship constraints, profile field restrictions, server-owned messaging state, and automated checks.
 
 AI replies default to off and can only be enabled after server-side OpenAI/Meta configuration and a connected WhatsApp number are verified. Replies use only the current agency's available inventory, enforce opt-out/human-handoff and the 24-hour window, and have configurable daily/per-conversation caps. Approved template sends remain disabled. The webhook worker must be invoked on a schedule and monitored before live ingestion is relied on.
+
+## Subscription and billing status
+
+Starter/Growth/Pro plans, usage limits, upgrade requests, and platform-owner approvals are implemented. Starter is free by default; paid plan prices are intentionally unset until the platform owner configures them. Checkout and payment-provider webhooks remain for the final API integration stage. Do not treat manual plan approval as a verified payment.
 
 ## Stack
 

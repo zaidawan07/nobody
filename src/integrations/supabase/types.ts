@@ -14,7 +14,208 @@ export type Database = {
   }
   public: {
     Tables: {
+      agency_subscriptions: {
+        Row: {
+          agency_id: string
+          billing_cycle: string
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string
+          id: string
+          plan_id: string
+          provider: string
+          provider_customer_id: string | null
+          provider_subscription_id: string | null
+          status: string
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          billing_cycle?: string
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string
+          id?: string
+          plan_id: string
+          provider?: string
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          billing_cycle?: string
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string
+          id?: string
+          plan_id?: string
+          provider?: string
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agency_subscriptions_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: true
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agency_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agency_tasks: {
+        Row: {
+          agency_id: string
+          assigned_to: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          due_at: string | null
+          id: string
+          lead_id: string | null
+          priority: string
+          property_id: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          assigned_to?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          lead_id?: string | null
+          priority?: string
+          property_id?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          assigned_to?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          lead_id?: string | null
+          priority?: string
+          property_id?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subscription_change_requests: {
+        Row: {
+          agency_id: string
+          created_at: string
+          created_by: string
+          id: string
+          note: string | null
+          requested_plan_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+        }
+        Insert: {
+          agency_id: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          note?: string | null
+          requested_plan_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Update: {
+          agency_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          note?: string | null
+          requested_plan_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      subscription_plans: {
+        Row: {
+          annual_price_pkr: number | null
+          code: string
+          created_at: string
+          description: string | null
+          features: string[]
+          id: string
+          is_active: boolean
+          max_ai_replies_per_day: number
+          max_leads: number | null
+          max_properties: number | null
+          max_team_members: number | null
+          monthly_price_pkr: number | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          annual_price_pkr?: number | null
+          code: string
+          created_at?: string
+          description?: string | null
+          features?: string[]
+          id?: string
+          is_active?: boolean
+          max_ai_replies_per_day?: number
+          max_leads?: number | null
+          max_properties?: number | null
+          max_team_members?: number | null
+          monthly_price_pkr?: number | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          annual_price_pkr?: number | null
+          code?: string
+          created_at?: string
+          description?: string | null
+          features?: string[]
+          id?: string
+          is_active?: boolean
+          max_ai_replies_per_day?: number
+          max_leads?: number | null
+          max_properties?: number | null
+          max_team_members?: number | null
+          monthly_price_pkr?: number | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+
         Row: {
           agency_id: string
           assigned_to: string | null

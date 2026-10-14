@@ -10,6 +10,7 @@ import type { Database } from "@/integrations/supabase/types";
 type PropertyType = Database["public"]["Enums"]["property_type"];
 type Purpose = Database["public"]["Enums"]["property_purpose"];
 type Status = Database["public"]["Enums"]["property_status"];
+type AreaUnit = Database["public"]["Enums"]["area_unit"];
 type PropertyRow = Database["public"]["Tables"]["properties"]["Row"];
 
 export const Route = createFileRoute("/properties")({
@@ -33,6 +34,7 @@ const types: PropertyType[] = [
   "agricultural",
 ];
 const statuses: Status[] = ["available", "reserved", "sold", "rented", "inactive"];
+const areaUnits: AreaUnit[] = ["marla", "kanal", "sqft", "sqyd", "acre"];
 
 function PropertiesPage() {
   const access = useAccess();
@@ -45,6 +47,18 @@ function PropertiesPage() {
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
   const [title, setTitle] = useState("");
   const [city, setCity] = useState("");
+  const [society, setSociety] = useState("");
+  const [locality, setLocality] = useState("");
+  const [phaseBlock, setPhaseBlock] = useState("");
+  const [address, setAddress] = useState("");
+  const [referenceCode, setReferenceCode] = useState("");
+  const [description, setDescription] = useState("");
+  const [areaValue, setAreaValue] = useState("");
+  const [areaUnit, setAreaUnit] = useState<AreaUnit>("marla");
+  const [bedrooms, setBedrooms] = useState("");
+  const [bathrooms, setBathrooms] = useState("");
+  const [furnished, setFurnished] = useState(false);
+  const [featuresText, setFeaturesText] = useState("");
   const [price, setPrice] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [type, setType] = useState<PropertyType>("house");
@@ -94,7 +108,7 @@ function PropertiesPage() {
     return (list.data ?? []).filter((property) => {
       const matchesSearch =
         !query ||
-        [property.title, property.city, property.society, property.locality, property.reference_code]
+        [property.title, property.city, property.society, property.locality, property.phase_block, property.address, property.reference_code, property.description]
           .some((value) => value?.toLocaleLowerCase().includes(query)) ||
         property.property_type.includes(query) ||
         property.purpose.includes(query);
@@ -106,6 +120,18 @@ function PropertiesPage() {
     setEditingId(null);
     setTitle("");
     setCity("");
+    setSociety("");
+    setLocality("");
+    setPhaseBlock("");
+    setAddress("");
+    setReferenceCode("");
+    setDescription("");
+    setAreaValue("");
+    setAreaUnit("marla");
+    setBedrooms("");
+    setBathrooms("");
+    setFurnished(false);
+    setFeaturesText("");
     setPrice("");
     setPhotos([]);
     setType("house");
@@ -117,6 +143,18 @@ function PropertiesPage() {
     setEditingId(property.id);
     setTitle(property.title);
     setCity(property.city ?? "");
+    setSociety(property.society ?? "");
+    setLocality(property.locality ?? "");
+    setPhaseBlock(property.phase_block ?? "");
+    setAddress(property.address ?? "");
+    setReferenceCode(property.reference_code ?? "");
+    setDescription(property.description ?? "");
+    setAreaValue(property.area_value == null ? "" : String(property.area_value));
+    setAreaUnit(property.area_unit ?? "marla");
+    setBedrooms(property.bedrooms == null ? "" : String(property.bedrooms));
+    setBathrooms(property.bathrooms == null ? "" : String(property.bathrooms));
+    setFurnished(property.furnished);
+    setFeaturesText((property.features ?? []).join(", "));
     setPrice(property.price_pkr == null ? "" : String(property.price_pkr));
     setType(property.property_type);
     setPurpose(property.purpose);
@@ -134,8 +172,19 @@ function PropertiesPage() {
     }
 
     const parsedPrice = price.trim() ? Number(price) : null;
+    const parsedArea = areaValue.trim() ? Number(areaValue) : null;
+    const parsedBedrooms = bedrooms.trim() ? Number(bedrooms) : null;
+    const parsedBathrooms = bathrooms.trim() ? Number(bathrooms) : null;
     if (parsedPrice !== null && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) {
       setError("Enter a valid non-negative price.");
+      return;
+    }
+    if (parsedArea !== null && (!Number.isFinite(parsedArea) || parsedArea < 0)) {
+      setError("Enter a valid non-negative area.");
+      return;
+    }
+    if ([parsedBedrooms, parsedBathrooms].some((value) => value !== null && (!Number.isInteger(value) || value < 0))) {
+      setError("Bedrooms and bathrooms must be whole numbers greater than or equal to zero.");
       return;
     }
 
@@ -154,6 +203,18 @@ function PropertiesPage() {
       const values = {
         title: title.trim(),
         city: city.trim() || null,
+        society: society.trim() || null,
+        locality: locality.trim() || null,
+        phase_block: phaseBlock.trim() || null,
+        address: address.trim() || null,
+        reference_code: referenceCode.trim() || null,
+        description: description.trim() || null,
+        area_value: parsedArea,
+        area_unit: parsedArea === null ? null : areaUnit,
+        bedrooms: parsedBedrooms,
+        bathrooms: parsedBathrooms,
+        furnished,
+        features: featuresText.split(",").map((feature) => feature.trim()).filter(Boolean).slice(0, 30),
         price_pkr: parsedPrice,
         property_type: type,
         purpose,
@@ -267,6 +328,55 @@ function PropertiesPage() {
               className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"
               placeholder="Lahore"
             />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Society / project
+            <input maxLength={120} value={society} onChange={(event) => setSociety(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="DHA, Bahria Town…" />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Locality
+            <input maxLength={120} value={locality} onChange={(event) => setLocality(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="Sector, neighborhood…" />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Phase / block
+            <input maxLength={80} value={phaseBlock} onChange={(event) => setPhaseBlock(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="Phase 6, Block B…" />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Reference code
+            <input maxLength={80} value={referenceCode} onChange={(event) => setReferenceCode(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="Internal listing ID" />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Street / address
+            <input maxLength={240} value={address} onChange={(event) => setAddress(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="Street, building, or plot address" />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Area
+            <div className="mt-1 flex gap-2">
+              <input type="number" min="0" step="0.01" value={areaValue} onChange={(event) => setAreaValue(event.target.value)} className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 font-normal" placeholder="Area" />
+              <select value={areaUnit} onChange={(event) => setAreaUnit(event.target.value as AreaUnit)} className="h-10 rounded-lg border border-input bg-background px-2 font-normal">
+                {areaUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+              </select>
+            </div>
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Bedrooms
+            <input type="number" min="0" step="1" value={bedrooms} onChange={(event) => setBedrooms(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
+            Bathrooms
+            <input type="number" min="0" step="1" value={bathrooms} onChange={(event) => setBathrooms(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" />
+          </label>
+          <label className="flex items-center gap-2 self-end text-sm font-medium">
+            <input type="checkbox" checked={furnished} onChange={(event) => setFurnished(event.target.checked)} className="size-4 rounded border-input" />
+            Furnished
+          </label>
+          <label className="space-y-1.5 text-sm font-medium md:col-span-2 xl:col-span-3">
+            Description
+            <textarea maxLength={5000} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1 block w-full rounded-lg border border-input bg-background px-3 py-2 font-normal" placeholder="Property details, condition, nearby facilities…" />
+          </label>
+          <label className="space-y-1.5 text-sm font-medium md:col-span-2 xl:col-span-3">
+            Features (comma-separated)
+            <input maxLength={2000} value={featuresText} onChange={(event) => setFeaturesText(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="Parking, lift, backup power, garden…" />
           </label>
           <label className="space-y-1.5 text-sm font-medium">
             Type
@@ -385,7 +495,8 @@ function PropertiesPage() {
                     </td>
                     <td className="px-4 py-4">
                       <p className="font-medium">{property.title}</p>
-                      <p className="text-xs text-muted-foreground">{property.city || "City not set"}</p>
+                      <p className="text-xs text-muted-foreground">{[property.city, property.society, property.locality, property.phase_block].filter(Boolean).join(" · ") || "Location not set"}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{[property.area_value != null ? `${property.area_value} ${property.area_unit ?? ""}`.trim() : "", property.bedrooms != null ? `${property.bedrooms} bed` : "", property.bathrooms != null ? `${property.bathrooms} bath` : "", property.furnished ? "Furnished" : ""].filter(Boolean).join(" · ")}</p>
                     </td>
                     <td className="px-4 py-4 capitalize">{property.property_type} · {property.purpose}</td>
                     <td className="px-4 py-4">

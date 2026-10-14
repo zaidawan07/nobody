@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { BadgeCheck, CreditCard, Crown, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccess } from "@/hooks/useAccess";
+import { requestSubscriptionChange } from "@/lib/provisioning.functions";
 
 function money(value: number | null | undefined) {
   if (value == null) return "Contact platform owner";
@@ -29,6 +31,7 @@ export const Route = createFileRoute("/billing")({
 function BillingPage() {
   const access = useAccess();
   const client = useQueryClient();
+  const submitPlanRequest = useServerFn(requestSubscriptionChange);
   const [note, setNote] = useState("");
   const [busyPlan, setBusyPlan] = useState("");
   const [message, setMessage] = useState("");
@@ -98,21 +101,18 @@ function BillingPage() {
   });
 
   async function requestPlan(planId: string) {
-    if (!access.data?.agencyId) return;
+    if (!access.data?.agencyId || !isAdmin) return;
     setBusyPlan(planId); setError(""); setMessage("");
-    const { error } = await supabase.from("subscription_change_requests").insert({
-      agency_id: access.data.agencyId,
-      requested_plan_id: planId,
-      note: note.trim() || null,
-    });
-    if (error) {
-      setError(error.code === "23505" ? "Your agency already has an open plan request. Wait for the platform owner to resolve it." : "Could not submit the plan request. Refresh and try again.");
-    } else {
+    try {
+      await submitPlanRequest({ data: { planId, note: note.trim() } });
       setMessage("Plan request submitted. The platform owner will review it; this does not charge you or change the plan yet.");
       setNote("");
       await client.invalidateQueries({ queryKey: ["subscription-change-request", access.data.agencyId] });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not submit the plan request. Refresh and try again.");
+    } finally {
+      setBusyPlan("");
     }
-    setBusyPlan("");
   }
 
   const isAdmin = access.data?.role === "agency_admin";

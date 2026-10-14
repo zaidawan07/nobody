@@ -333,7 +333,13 @@ async function maybeSendAiReply(
     .maybeSingle();
   if (existingError) throw new Error("Could not verify AI reply idempotency.");
   // Never retry an uncertain provider send automatically; this avoids duplicate customer messages.
-  if (existing) return;
+  // If a previous attempt was left incomplete by a crash, route it to a human instead of silently stalling.
+  if (existing) {
+    if (existing.provider_status !== "sent" && !existing.provider_message_id) {
+      await handoff("A previous automated reply could not be confirmed; human follow-up is required.");
+    }
+    return;
+  }
 
   const { data: agency } = await admin.from("agencies")
     .select("name,cities_served,working_hours")
@@ -389,6 +395,7 @@ async function maybeSendAiReply(
   if (reserveError || !reserved) {
     if (reserveError?.code === "23505") return;
     console.error("Could not reserve an idempotent AI reply record.");
+    await handoff("Automated reply could not be reserved safely; human follow-up is required.");
     return;
   }
 
@@ -434,6 +441,7 @@ async function maybeSendAiReply(
     }).eq("id", reserved.id).eq("agency_id", event.agency_id);
     if (saveError) {
       console.error("Meta accepted an AI reply but its delivery record could not be saved; do not resend blindly.");
+      await handoff("Automated reply acceptance could not be recorded; review before replying again.");
       return;
     }
     await admin.from("conversations").update({ last_message_at: sentAt }).eq("id", conversation.id).eq("agency_id", event.agency_id);

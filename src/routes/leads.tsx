@@ -42,6 +42,18 @@ function LeadsPage() {
   const [budgetMax, setBudgetMax] = useState("");
   const [propertyType, setPropertyType] = useState<PropertyType | "">("");
   const [purpose, setPurpose] = useState<Purpose | "">("");
+  const [assignedTo, setAssignedTo] = useState("");
+
+  const team = useQuery({
+    queryKey: ["lead-assignees", access.data?.agencyId],
+    enabled: !!access.data?.agencyId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id,full_name,phone").eq("agency_id", access.data!.agencyId!);
+      if (error) throw error;
+      return data;
+    },
+  });
+  const teammates = new Map((team.data ?? []).map((member) => [member.id, member.full_name || member.phone || "Team member"]));
 
   const list = useQuery({
     queryKey: ["leads", access.data?.agencyId],
@@ -61,7 +73,7 @@ function LeadsPage() {
           .some((value) => value?.toLocaleLowerCase().includes(query));
       return matchesSearch && (statusFilter === "all" || lead.status === statusFilter);
     });
-  }, [list.data, search, statusFilter]);
+  }, [list.data, search, statusFilter, team.data]);
 
   function resetForm() {
     setEditingId(null);
@@ -73,6 +85,7 @@ function LeadsPage() {
     setBudgetMax("");
     setPropertyType("");
     setPurpose("");
+    setAssignedTo("");
     setError("");
   }
 
@@ -86,6 +99,7 @@ function LeadsPage() {
     setBudgetMax(lead.budget_max_pkr == null ? "" : String(lead.budget_max_pkr));
     setPropertyType(lead.property_type ?? "");
     setPurpose(lead.purpose ?? "");
+    setAssignedTo(lead.assigned_to ?? "");
     setError("");
     setShowForm(true);
   }
@@ -108,6 +122,10 @@ function LeadsPage() {
       setError("Budgets must be valid non-negative amounts.");
       return;
     }
+    if (assignedTo && !teammates.has(assignedTo)) {
+      setError("Choose a teammate from your agency.");
+      return;
+    }
     if (min !== null && max !== null && min > max) {
       setError("Minimum budget cannot exceed maximum budget.");
       return;
@@ -126,6 +144,7 @@ function LeadsPage() {
         budget_max_pkr: max,
         property_type: propertyType || null,
         purpose: purpose || null,
+        assigned_to: assignedTo || null,
       };
       const result = editingId
         ? await supabase.from("leads").update(values).eq("id", editingId)
@@ -198,6 +217,13 @@ function LeadsPage() {
             </select>
           </label>
           <label className="space-y-1.5 text-sm font-medium">
+            Assigned agent
+            <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal">
+              <option value="">Unassigned</option>
+              {(team.data ?? []).map((member) => <option key={member.id} value={member.id}>{member.full_name || member.phone || "Team member"}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1.5 text-sm font-medium">
             Purpose
             <select value={purpose} onChange={(event) => setPurpose(event.target.value as Purpose | "")} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal">
               <option value="">Sale or rent</option>
@@ -253,7 +279,7 @@ function LeadsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                <tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Requirement</th><th className="px-4 py-3">Budget</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Actions</th></tr>
+                <tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Requirement</th><th className="px-4 py-3">Budget</th><th className="px-4 py-3">Assigned agent</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Actions</th></tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredLeads.map((lead) => (
@@ -269,6 +295,7 @@ function LeadsPage() {
                     <td className="whitespace-nowrap px-4 py-4 text-xs">
                       {lead.budget_min_pkr == null && lead.budget_max_pkr == null ? "—" : `PKR ${lead.budget_min_pkr?.toLocaleString("en-PK") ?? "0"} – ${lead.budget_max_pkr?.toLocaleString("en-PK") ?? "no max"}`}
                     </td>
+                    <td className="px-4 py-4">{teammates.get(lead.assigned_to ?? "") || "Unassigned"}</td>
                     <td className="px-4 py-4">
                       <select aria-label={`Status for ${lead.name || lead.phone || "lead"}`} value={lead.status} onChange={(event) => updateStatus(lead.id, event.target.value as LeadStatus)} className="h-9 rounded-md border border-input bg-background px-2 text-xs">
                         {statuses.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}

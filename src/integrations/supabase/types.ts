@@ -464,6 +464,61 @@ export type Database = {
           },
         ]
       }
+      lead_activities: {
+        Row: {
+          activity_type: string
+          actor_id: string | null
+          agency_id: string
+          created_at: string
+          description: string
+          id: string
+          lead_id: string
+          metadata: Json
+        }
+        Insert: {
+          activity_type: string
+          actor_id?: string | null
+          agency_id: string
+          created_at?: string
+          description: string
+          id?: string
+          lead_id: string
+          metadata?: Json
+        }
+        Update: {
+          activity_type?: string
+          actor_id?: string | null
+          agency_id?: string
+          created_at?: string
+          description?: string
+          id?: string
+          lead_id?: string
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_same_agency_lead_fk"
+            columns: ["agency_id", "lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["agency_id", "id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           agency_id: string | null

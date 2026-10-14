@@ -42,7 +42,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
   SELECT EXISTS (
     SELECT 1
     FROM public.user_roles ur
@@ -52,7 +52,7 @@ AS $
       AND p.status = 'active'
       AND p.agency_id IS NULL
   );
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.is_agency_admin(_agency_id uuid)
 RETURNS boolean
@@ -60,7 +60,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
   SELECT EXISTS (
     SELECT 1
     FROM public.user_roles ur
@@ -73,7 +73,7 @@ AS $
       AND p.status = 'active'
       AND a.status = 'active'
   );
-$;
+$$;
 
 -- has_role is called by server functions for the authenticated caller. Do not
 -- allow clients to probe role membership for arbitrary user IDs via RPC.

@@ -4,7 +4,7 @@ This guide is intentionally a final release step. No credentials are stored in G
 
 ## 1. Configure secrets
 
-Set the app-hosting environment variables from `.env.example`. Keep these server-only:
+Start with `bun run env:check` for the base Supabase settings, then run `bun run env:check -- --whatsapp` and `bun run env:check -- --ai` as you add Meta and OpenAI credentials. The preflight verifies project URL/key consistency and encryption-key format without printing values. Set the app-hosting environment variables from `.env.example`. Keep these server-only:
 
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `PLATFORM_BOOTSTRAP_SECRET`

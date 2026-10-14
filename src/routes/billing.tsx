@@ -135,8 +135,8 @@ function BillingPage() {
       </section>
 
       <section className="surface-panel mb-6 p-5">
-        <div className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /><h2 className="font-semibold">Usage this period</h2></div>
-        <p className="mt-1 text-sm text-muted-foreground">The database enforces property, lead, and active-team limits during creation. AI replies are capped by both plan allowance and server-side safety limits.</p>
+        <div className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /><h2 className="font-semibold">Usage & limits</h2></div>
+        <p className="mt-1 text-sm text-muted-foreground">Property, lead, and team figures are current totals; AI replies are counted for today. The database enforces record limits during creation, and AI replies are capped by both plan allowance and server-side safety limits.</p>
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             { label: "Properties", used: usage.data?.properties ?? 0, max: currentPlan.data?.max_properties ?? null },

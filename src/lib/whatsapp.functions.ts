@@ -161,7 +161,7 @@ export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
     tokenUrl.searchParams.set("client_secret", config.appSecret);
     tokenUrl.searchParams.set("code", data.code);
     const tokenResult = await metaJson(tokenUrl);
-    const accessToken = typeof tokenResult.access_token === "string" ? tokenResult.access_token : "";
+    const accessToken = typeof tokenResult["access_token"] === "string" ? tokenResult["access_token"] : "";
     if (!accessToken) throw new Error("Meta did not return an access token.");
 
     // Verify the token belongs to this app and has the WhatsApp permissions needed.
@@ -169,7 +169,7 @@ export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
     debugUrl.searchParams.set("input_token", accessToken);
     debugUrl.searchParams.set("access_token", config.appId + "|" + config.appSecret);
     const debugResult = await metaJson(debugUrl);
-    const tokenData = debugResult.data as { is_valid?: boolean; app_id?: string; scopes?: string[] } | undefined;
+    const tokenData = debugResult["data"] as { is_valid?: boolean; app_id?: string; scopes?: string[] } | undefined;
     if (!tokenData?.is_valid || tokenData.app_id !== config.appId) throw new Error("Meta returned a token that is not valid for this app.");
     const scopes = tokenData.scopes ?? [];
     if (!scopes.includes("whatsapp_business_management") || !scopes.includes("whatsapp_business_messaging")) {
@@ -181,14 +181,14 @@ export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
     numbersUrl.searchParams.set("fields", "id,display_phone_number,verified_name,status");
     numbersUrl.searchParams.set("appsecret_proof", proof);
     const numberResult = await metaJson(numbersUrl, accessToken);
-    const numbers = Array.isArray(numberResult.data) ? numberResult.data as Array<{ id?: string; display_phone_number?: string; verified_name?: string }> : [];
+    const numbers = Array.isArray(numberResult["data"]) ? numberResult["data"] as Array<{ id?: string; display_phone_number?: string; verified_name?: string }> : [];
     const phone = numbers.find((item) => item.id === data.phoneNumberId);
     if (!phone) throw new Error("The selected phone number could not be verified under the authorized WhatsApp Business Account.");
 
     const encryptedToken = await encryptAccessToken(accessToken, config.encryptionKey);
     const now = new Date();
-    const expiresAt = typeof tokenResult.expires_in === "number"
-      ? new Date(now.getTime() + tokenResult.expires_in * 1000).toISOString()
+    const expiresAt = typeof tokenResult["expires_in"] === "number"
+      ? new Date(now.getTime() + tokenResult["expires_in"] * 1000).toISOString()
       : null;
     const alreadyRegistered = phone.status === "CONNECTED";
     const { error: saveError } = await admin.from("whatsapp_configs").upsert({

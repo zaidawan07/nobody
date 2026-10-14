@@ -94,10 +94,10 @@ function WhatsAppSettings() {
       const payload = event.data as { type?: unknown; data?: Record<string, unknown> };
       if (payload.type !== "WA_EMBEDDED_SIGNUP" || !payload.data) return;
       const data = payload.data;
-      const eventName = typeof data.event === "string" ? data.event : "";
+      const eventName = typeof data["event"] === "string" ? data["event"] : "";
       if (eventName === "FINISH" || eventName === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
-        if (typeof data.waba_id === "string") setWabaId(data.waba_id);
-        if (typeof data.phone_number_id === "string") setPhoneNumberId(data.phone_number_id);
+        if (typeof data["waba_id"] === "string") setWabaId(data["waba_id"]);
+        if (typeof data["phone_number_id"] === "string") setPhoneNumberId(data["phone_number_id"]);
       } else if (eventName === "CANCEL" || eventName === "ERROR") {
         setConnecting(false);
         setConnectNotice("Meta signup was cancelled or could not complete. You can try again.");

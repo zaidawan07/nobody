@@ -20,7 +20,10 @@ function ConversationsPage() {
   const list = useQuery({ queryKey: ["conversations"], queryFn: async () => { const { data, error } = await supabase.from("conversations").select("*").order("last_message_at", { ascending: false, nullsFirst: false }); if (error) throw error; return data; } });
   useEffect(() => {
     if (!list.data?.length) { setSelectedId(""); return; }
-    if (!selectedId || !list.data.some((item) => item.id === selectedId)) setSelectedId(list.data[0].id);
+    if (!selectedId || !list.data.some((item) => item.id === selectedId)) {
+      const firstId = list.data[0]?.id;
+      if (firstId) setSelectedId(firstId);
+    }
   }, [list.data, selectedId]);
   const selected = list.data?.find((item) => item.id === selectedId);
   const messages = useQuery({

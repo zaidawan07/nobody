@@ -226,3 +226,50 @@ export const setTeamMemberStatus = createServerFn({ method: "POST" })
     if (updateError) throw new Error("Could not update teammate status.");
     return { ok: true };
   });
+
+
+const agencySettingsSchema = z.object({
+  name: z.string().trim().min(2).max(150),
+  phone: z.string().trim().max(40),
+  email: z.union([z.string().trim().email().max(254), z.literal("")]),
+  officeAddress: z.string().trim().max(300),
+  citiesServed: z.array(z.string().trim().min(1).max(100)).max(20),
+  description: z.string().trim().max(2000),
+  workingHours: z.string().trim().max(500),
+});
+
+/** Agency admin: update only the profile of the agency assigned to the current account. */
+export const updateAgencySettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => agencySettingsSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertRole(context.supabase as never, context.userId, "agency_admin");
+
+    const { data: actor, error: actorError } = await context.supabase
+      .from("profiles")
+      .select("agency_id,status")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (actorError || !actor?.agency_id || actor.status !== "active") {
+      throw new Error("Your account is not an active agency administrator.");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: updated, error } = await supabaseAdmin
+      .from("agencies")
+      .update({
+        name: data.name,
+        phone: data.phone || null,
+        email: data.email || null,
+        office_address: data.officeAddress || null,
+        cities_served: [...new Set(data.citiesServed.map((city) => city.trim()).filter(Boolean))],
+        description: data.description || null,
+        working_hours: data.workingHours || null,
+      })
+      .eq("id", actor.agency_id)
+      .eq("status", "active")
+      .select("id")
+      .maybeSingle();
+    if (error || !updated) throw new Error("Could not update agency settings. Verify that the agency is active.");
+    return { ok: true };
+  });

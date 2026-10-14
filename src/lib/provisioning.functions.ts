@@ -22,12 +22,12 @@ const memberSchema = z.object({
 });
 
 async function assertRole(
-  supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }> },
+  supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error?: { message: string } | null }> },
   userId: string,
   role: "super_admin" | "agency_admin",
 ) {
-  const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: role });
-  if (data !== true) throw new Error("You do not have permission to do this.");
+  const { data, error } = await supabase.rpc("has_role", { _user_id: userId, _role: role });
+  if (error || data !== true) throw new Error("You do not have permission to do this.");
 }
 
 /** Super admin: create an agency plus its first admin account. */
@@ -41,46 +41,59 @@ export const provisionAgency = createServerFn({ method: "POST" })
     const { data: agency, error: agencyError } = await supabaseAdmin
       .from("agencies")
       .insert({
-        name: data.agencyName,
-        phone: data.phone ?? null,
-        whatsapp_number: data.whatsappNumber ?? null,
-        cities_served: data.city ? [data.city] : [],
+        name: data.agencyName.trim(),
+        phone: data.phone?.trim() || null,
+        whatsapp_number: data.whatsappNumber?.trim() || null,
+        cities_served: data.city?.trim() ? [data.city.trim()] : [],
       })
       .select("id")
       .single();
-    if (agencyError) throw new Error(agencyError.message);
+    if (agencyError || !agency) throw new Error(agencyError?.message ?? "Could not create the agency.");
 
-    const { error: configError } = await supabaseAdmin.from("whatsapp_configs").insert({
-      agency_id: agency.id,
-      whatsapp_number: data.whatsappNumber ?? null,
-    });
-    if (configError) throw new Error(configError.message);
+    let adminId: string | null = null;
+    try {
+      const { error: configError } = await supabaseAdmin.from("whatsapp_configs").insert({
+        agency_id: agency.id,
+        whatsapp_number: data.whatsappNumber?.trim() || null,
+      });
+      if (configError) throw new Error(configError.message);
 
-    const created = await supabaseAdmin.auth.admin.createUser({
-      email: data.adminEmail,
-      password: data.adminPassword,
-      email_confirm: true,
-      user_metadata: { full_name: data.adminName },
-    });
-    if (created.error || !created.data.user) {
+      const created = await supabaseAdmin.auth.admin.createUser({
+        email: data.adminEmail.trim().toLowerCase(),
+        password: data.adminPassword,
+        email_confirm: true,
+        user_metadata: { full_name: data.adminName.trim() },
+      });
+      if (created.error || !created.data.user) {
+        throw new Error(created.error?.message ?? "Could not create the admin account.");
+      }
+      adminId = created.data.user.id;
+
+      const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
+        id: adminId,
+        agency_id: agency.id,
+        full_name: data.adminName.trim(),
+        email: data.adminEmail.trim().toLowerCase(),
+        job_title: "Agency Admin",
+      });
+      if (profileError) throw new Error(profileError.message);
+
+      const { error: roleError } = await supabaseAdmin
+        .from("user_roles")
+        .insert({ user_id: adminId, role: "agency_admin", agency_id: agency.id });
+      if (roleError) throw new Error(roleError.message);
+
+      return { agencyId: agency.id };
+    } catch (error) {
+      // Supabase REST calls are not one SQL transaction; compensate on partial failure.
+      if (adminId) {
+        await supabaseAdmin.from("user_roles").delete().eq("user_id", adminId);
+        await supabaseAdmin.from("profiles").delete().eq("id", adminId);
+        await supabaseAdmin.auth.admin.deleteUser(adminId);
+      }
       await supabaseAdmin.from("agencies").delete().eq("id", agency.id);
-      throw new Error(created.error?.message ?? "Could not create the admin account.");
+      throw error;
     }
-
-    const adminId = created.data.user.id;
-    await supabaseAdmin.from("profiles").upsert({
-      id: adminId,
-      agency_id: agency.id,
-      full_name: data.adminName,
-      email: data.adminEmail,
-      job_title: "Agency Admin",
-    });
-    const { error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: adminId, role: "agency_admin", agency_id: agency.id });
-    if (roleError) throw new Error(roleError.message);
-
-    return { agencyId: agency.id };
   });
 
 /** Agency admin: add a teammate inside their own agency only. */
@@ -100,30 +113,39 @@ export const addTeamMember = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const created = await supabaseAdmin.auth.admin.createUser({
-      email: data.email,
+      email: data.email.trim().toLowerCase(),
       password: data.password,
       email_confirm: true,
-      user_metadata: { full_name: data.fullName },
+      user_metadata: { full_name: data.fullName.trim() },
     });
     if (created.error || !created.data.user) {
       throw new Error(created.error?.message ?? "Could not create the account.");
     }
 
     const memberId = created.data.user.id;
-    await supabaseAdmin.from("profiles").upsert({
-      id: memberId,
-      agency_id: me.agency_id,
-      full_name: data.fullName,
-      email: data.email,
-      phone: data.phone ?? null,
-      job_title: data.jobTitle ?? null,
-    });
-    const { error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: memberId, role: data.role, agency_id: me.agency_id });
-    if (roleError) throw new Error(roleError.message);
+    try {
+      const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
+        id: memberId,
+        agency_id: me.agency_id,
+        full_name: data.fullName.trim(),
+        email: data.email.trim().toLowerCase(),
+        phone: data.phone?.trim() || null,
+        job_title: data.jobTitle?.trim() || null,
+      });
+      if (profileError) throw new Error(profileError.message);
 
-    return { userId: memberId };
+      const { error: roleError } = await supabaseAdmin
+        .from("user_roles")
+        .insert({ user_id: memberId, role: data.role, agency_id: me.agency_id });
+      if (roleError) throw new Error(roleError.message);
+
+      return { userId: memberId };
+    } catch (error) {
+      await supabaseAdmin.from("user_roles").delete().eq("user_id", memberId);
+      await supabaseAdmin.from("profiles").delete().eq("id", memberId);
+      await supabaseAdmin.auth.admin.deleteUser(memberId);
+      throw error;
+    }
   });
 
 /** Super admin: pause or reactivate a whole agency. */
@@ -134,7 +156,8 @@ export const setAgencyStatus = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertRole(context.supabase as never, context.userId, "super_admin");
-    const { error } = await context.supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
       .from("agencies")
       .update({ status: data.status })
       .eq("id", data.agencyId);

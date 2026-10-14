@@ -18,7 +18,7 @@ export const getMyAccess = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<MyAccess> => {
     const { supabase, userId } = context;
 
-    const [{ data: profile }, { data: roles }] = await Promise.all([
+    const [{ data: profile, error: profileError }, { data: roles, error: rolesError }] = await Promise.all([
       supabase
         .from("profiles")
         .select("full_name, email, agency_id, agencies(name)")
@@ -26,14 +26,24 @@ export const getMyAccess = createServerFn({ method: "GET" })
         .maybeSingle(),
       supabase.from("user_roles").select("role, agency_id").eq("user_id", userId),
     ]);
+    if (profileError) throw new Error("Unable to load your account profile.");
+    if (rolesError) throw new Error("Unable to verify your access role.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { count } = await supabaseAdmin
+    const { count, error: countError } = await supabaseAdmin
       .from("user_roles")
       .select("id", { count: "exact", head: true })
       .eq("role", "super_admin");
+    if (countError) throw new Error("Unable to verify platform setup status.");
 
-    const role = (roles?.[0]?.role as AppRole | undefined) ?? null;
+    const roleRows = roles ?? [];
+    const role: AppRole | null = roleRows.some((r) => r.role === "super_admin")
+      ? "super_admin"
+      : roleRows.some((r) => r.role === "agency_admin")
+        ? "agency_admin"
+        : roleRows.some((r) => r.role === "employee")
+          ? "employee"
+          : null;
     const agency = profile?.agencies as { name?: string } | null;
 
     return {

@@ -100,10 +100,33 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
       throw new Error('Unauthorized: No user ID found in token');
     }
 
+    const userId = data.claims.sub;
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("status, agency_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profileError) throw new Error("Unable to verify account status.");
+    if (!profile) throw new Error("Account profile is not provisioned.");
+    if (profile.status !== "active") throw new Error("This account is not active.");
+
+    // A suspended agency must lose access even if its members still hold valid JWTs.
+    // The migration also makes current_agency_id() return NULL for inactive tenants,
+    // so direct PostgREST requests are blocked by RLS as well as server functions.
+    if (profile.agency_id) {
+      const { data: agency, error: agencyError } = await supabase
+        .from("agencies")
+        .select("status")
+        .eq("id", profile.agency_id)
+        .maybeSingle();
+      if (agencyError || !agency) throw new Error("Agency workspace is unavailable or suspended.");
+      if (agency.status !== "active") throw new Error("This agency workspace is suspended.");
+    }
+
     return next({
       context: {
         supabase,
-        userId: data.claims.sub,
+        userId,
         claims: data.claims,
       },
     });

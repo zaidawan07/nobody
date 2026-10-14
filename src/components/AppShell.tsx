@@ -12,6 +12,7 @@ import {
   Bot,
   BarChart3,
   Settings,
+  ClipboardList,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,6 +36,7 @@ const agencyNav: NavItem[] = [
   { to: "/agency", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
   { to: "/properties", label: "Properties", icon: <Home className="size-4" /> },
   { to: "/leads", label: "Leads", icon: <UserSquare2 className="size-4" /> },
+  { to: "/tasks", label: "Follow-up tasks", icon: <ClipboardList className="size-4" /> },
   { to: "/visits", label: "Site visits", icon: <CalendarCheck className="size-4" /> },
   { to: "/conversations", label: "WhatsApp inbox", icon: <MessageSquare className="size-4" /> },
   { to: "/reports", label: "Reports & exports", icon: <BarChart3 className="size-4" /> },

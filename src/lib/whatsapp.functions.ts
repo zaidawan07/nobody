@@ -27,6 +27,24 @@ async function requireAgencyAdmin(
   return { agencyId: profile.agency_id, userId };
 }
 
+async function requireAgencyMember(supabase: SupabaseClient<Database>, userId: string): Promise<AgencyAdminContext> {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("agency_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError || !profile?.agency_id) throw new Error("Your account is not linked to an agency.");
+  const { data: roles, error: rolesError } = await supabase
+    .from("user_roles")
+    .select("role, agency_id")
+    .eq("user_id", userId)
+    .eq("agency_id", profile.agency_id);
+  if (rolesError || !(roles ?? []).some((row) => row.role === "agency_admin" || row.role === "employee")) {
+    throw new Error("Your account does not have an agency messaging role.");
+  }
+  return { agencyId: profile.agency_id, userId };
+}
+
 function adminClient() {
   const url = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_SERVICE_ROLE_KEY"];
@@ -279,4 +297,124 @@ export const registerWhatsAppPhoneNumber = createServerFn({ method: "POST" })
     }).eq("agency_id", agencyId);
     if (updateError) throw new Error("Meta registered the phone, but the local connection state could not be saved. Contact support.");
     return { connected: true };
+  });
+
+
+export const sendWhatsAppMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({
+    conversationId: z.string().uuid(),
+    clientRequestId: z.string().uuid(),
+    body: z.string().trim().min(1).max(4096),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { agencyId, userId } = await requireAgencyMember(context.supabase, context.userId);
+    const admin = adminClient();
+
+    // Idempotency is checked before the 24-hour window so a retry never sends
+    // a second message or fails merely because the window elapsed afterward.
+    const { data: existing, error: existingError } = await admin
+      .from("conversation_messages")
+      .select("id,conversation_id,body,provider_status,provider_message_id")
+      .eq("agency_id", agencyId)
+      .eq("client_request_id", data.clientRequestId)
+      .maybeSingle();
+    if (existingError) throw new Error("Could not verify the message request.");
+    if (existing) {
+      if (existing.conversation_id !== data.conversationId || existing.body !== data.body) {
+        throw new Error("This request ID was already used for a different message.");
+      }
+      return { messageId: existing.id, providerMessageId: existing.provider_message_id ?? null, status: existing.provider_status ?? "pending", duplicate: true };
+    }
+
+    const { data: conversation, error: conversationError } = await admin
+      .from("conversations")
+      .select("id,agency_id,customer_phone,state,handoff_requested,last_customer_message_at,opted_out_at")
+      .eq("id", data.conversationId)
+      .eq("agency_id", agencyId)
+      .maybeSingle();
+    if (conversationError || !conversation) throw new Error("Conversation was not found in your agency.");
+    if (conversation.opted_out_at) throw new Error("This customer has opted out. Outbound messages are blocked.");
+    if (conversation.state !== "human_active" && !conversation.handoff_requested) {
+      throw new Error("Take over this conversation before sending a human reply.");
+    }
+    const lastInbound = conversation.last_customer_message_at ? new Date(conversation.last_customer_message_at).getTime() : Number.NaN;
+    const elapsed = Date.now() - lastInbound;
+    if (!Number.isFinite(lastInbound) || elapsed < 0 || elapsed > 24 * 60 * 60 * 1000) {
+      throw new Error("The 24-hour customer service window is closed. Approved template sending is not enabled, so this free-form message was not sent.");
+    }
+
+    const config = requiredMetaConfig();
+    const { data: connection, error: connectionError } = await admin
+      .from("whatsapp_configs")
+      .select("phone_number_id,access_token_encrypted,access_token_expires_at,connection_status")
+      .eq("agency_id", agencyId)
+      .maybeSingle();
+    if (connectionError || !connection?.phone_number_id || !connection.access_token_encrypted || connection.connection_status !== "connected") {
+      throw new Error("The agency's official WhatsApp channel is not connected.");
+    }
+    if (connection.access_token_expires_at && new Date(connection.access_token_expires_at).getTime() <= Date.now()) {
+      throw new Error("The WhatsApp access token has expired. Reconnect the channel before sending.");
+    }
+
+    const { data: message, error: insertError } = await admin.from("conversation_messages").insert({
+      agency_id: agencyId,
+      conversation_id: conversation.id,
+      sender: "employee",
+      body: data.body,
+      provider_status: "pending",
+      client_request_id: data.clientRequestId,
+      created_by: userId,
+      created_at: new Date().toISOString(),
+    }).select("id").single();
+    if (insertError || !message) {
+      if (insertError?.code === "23505") {
+        const { data: raced } = await admin.from("conversation_messages")
+          .select("id,conversation_id,body,provider_status,provider_message_id")
+          .eq("agency_id", agencyId)
+          .eq("client_request_id", data.clientRequestId)
+          .maybeSingle();
+        if (raced && raced.conversation_id === data.conversationId && raced.body === data.body) {
+          return { messageId: raced.id, providerMessageId: raced.provider_message_id ?? null, status: raced.provider_status ?? "pending", duplicate: true };
+        }
+      }
+      throw new Error("Could not reserve the message for safe delivery.");
+    }
+
+    try {
+      const token = await decryptAccessToken(connection.access_token_encrypted, config.encryptionKey);
+      const proof = await hmacHex(config.appSecret, token);
+      const sendUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/" + connection.phone_number_id + "/messages");
+      sendUrl.searchParams.set("appsecret_proof", proof);
+      const result = await metaJson(sendUrl, token, "POST", {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: conversation.customer_phone,
+        type: "text",
+        text: { preview_url: false, body: data.body },
+        biz_opaque_callback_data: data.clientRequestId,
+      });
+      const messages = Array.isArray(result["messages"]) ? result["messages"] as Array<{ id?: string }> : [];
+      const providerMessageId = typeof messages[0]?.id === "string" ? messages[0].id : "";
+      if (!providerMessageId) throw new Error("Meta did not return a message ID.");
+      const sentAt = new Date().toISOString();
+      const { error: savedError } = await admin.from("conversation_messages").update({
+        provider_message_id: providerMessageId,
+        provider_status: "sent",
+        sent_at: sentAt,
+      }).eq("id", message.id).eq("agency_id", agencyId);
+      if (savedError) throw new Error("Meta accepted the message, but its delivery record could not be saved. Do not resend blindly.");
+      await admin.from("conversations").update({ last_message_at: sentAt }).eq("id", conversation.id).eq("agency_id", agencyId);
+      return { messageId: message.id, providerMessageId, status: "sent", duplicate: false };
+    } catch (error) {
+      const safeMessage = error instanceof Error && error.message.includes("Do not resend blindly")
+        ? error.message
+        : "WhatsApp could not confirm delivery. Check the channel and message status before retrying.";
+      await admin.from("conversation_messages").update({
+        provider_status: "failed",
+        failed_at: new Date().toISOString(),
+        error_message: safeMessage.slice(0, 500),
+      }).eq("id", message.id).eq("agency_id", agencyId);
+      throw new Error(safeMessage);
+    }
   });

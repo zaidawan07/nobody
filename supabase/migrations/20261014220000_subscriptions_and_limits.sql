@@ -213,3 +213,81 @@ DROP TRIGGER IF EXISTS set_agency_subscriptions_updated_at ON public.agency_subs
 CREATE TRIGGER set_agency_subscriptions_updated_at
   BEFORE UPDATE ON public.agency_subscriptions
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+-- Transactional platform-owner approval/rejection of subscription requests.
+CREATE OR REPLACE FUNCTION public.resolve_subscription_change_request(
+  _request_id uuid,
+  _decision text,
+  _actor_id uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_request public.subscription_change_requests%ROWTYPE;
+  v_plan_id uuid;
+BEGIN
+  IF _decision NOT IN ('approved', 'rejected') THEN
+    RAISE EXCEPTION 'Invalid subscription request decision.';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    JOIN public.profiles p ON p.id = ur.user_id
+    WHERE ur.user_id = _actor_id
+      AND ur.role = 'super_admin'
+      AND ur.agency_id IS NULL
+      AND p.agency_id IS NULL
+      AND p.status = 'active'
+  ) THEN
+    RAISE EXCEPTION 'Only an active platform owner may resolve subscription requests.';
+  END IF;
+
+  SELECT * INTO v_request
+  FROM public.subscription_change_requests
+  WHERE id = _request_id AND status = 'open'
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Subscription request was already resolved or does not exist.';
+  END IF;
+
+  IF _decision = 'approved' THEN
+    SELECT id INTO v_plan_id
+    FROM public.subscription_plans
+    WHERE id = v_request.requested_plan_id AND is_active = true;
+    IF v_plan_id IS NULL THEN
+      RAISE EXCEPTION 'The requested subscription plan is inactive.';
+    END IF;
+
+    INSERT INTO public.agency_subscriptions (
+      agency_id, plan_id, status, billing_cycle, current_period_start,
+      current_period_end, cancel_at_period_end, provider
+    ) VALUES (
+      v_request.agency_id, v_plan_id, 'active', 'monthly', now(),
+      NULL, false, 'manual'
+    )
+    ON CONFLICT (agency_id) DO UPDATE SET
+      plan_id = EXCLUDED.plan_id,
+      status = 'active',
+      billing_cycle = EXCLUDED.billing_cycle,
+      current_period_start = now(),
+      current_period_end = NULL,
+      cancel_at_period_end = false,
+      provider = 'manual',
+      provider_customer_id = NULL,
+      provider_subscription_id = NULL,
+      updated_at = now();
+  END IF;
+
+  UPDATE public.subscription_change_requests
+  SET status = _decision, resolved_by = _actor_id, resolved_at = now()
+  WHERE id = v_request.id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_subscription_change_request(uuid, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_subscription_change_request(uuid, text, uuid) TO service_role;

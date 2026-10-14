@@ -3,4 +3,6 @@ project_id = "zxuojmqyqwytrhdymlsu"
 verify_jwt = false
 
 [functions.whatsapp-webhook-worker]
-verify_jwt = true
+# The worker compares the Authorization bearer value to the server-only secret itself.
+# Disable gateway JWT parsing so both legacy service_role JWTs and sb_secret_* keys work.
+verify_jwt = false

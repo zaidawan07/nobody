@@ -1,0 +1,205 @@
+import { createServerFn } from "@tanstack/react-start";
+import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+type AgencyAdminContext = { agencyId: string; userId: string };
+
+async function requireAgencyAdmin(
+  supabase: Parameters<typeof requireSupabaseAuth>[0] extends never ? never : any,
+  userId: string,
+): Promise<AgencyAdminContext> {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("agency_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError || !profile?.agency_id) throw new Error("Your account is not linked to an agency.");
+  const { data: roles, error: rolesError } = await supabase
+    .from("user_roles")
+    .select("role, agency_id")
+    .eq("user_id", userId)
+    .eq("agency_id", profile.agency_id);
+  if (rolesError || !(roles ?? []).some((row: { role: string }) => row.role === "agency_admin")) {
+    throw new Error("Only an agency administrator can connect WhatsApp.");
+  }
+  return { agencyId: profile.agency_id, userId };
+}
+
+function adminClient() {
+  const url = process.env["SUPABASE_URL"];
+  const key = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+  if (!url || !key) throw new Error("Supabase server credentials are not configured.");
+  return createClient<any>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+function requiredMetaConfig() {
+  const appId = process.env["META_APP_ID"];
+  const appSecret = process.env["META_APP_SECRET"];
+  const configId = process.env["META_EMBEDDED_SIGNUP_CONFIG_ID"];
+  const graphApiVersion = process.env["META_GRAPH_API_VERSION"] || "v25.0";
+  const encryptionKey = process.env["META_TOKEN_ENCRYPTION_KEY"];
+  if (!appId || !appSecret || !configId || !encryptionKey) {
+    throw new Error("Meta Embedded Signup is not fully configured on the server.");
+  }
+  if (!/^v\d+\.\d+$/.test(graphApiVersion)) throw new Error("META_GRAPH_API_VERSION is invalid.");
+  return { appId, appSecret, configId, graphApiVersion, encryptionKey };
+}
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function decodeBase64(value: string) {
+  try {
+    const binary = atob(value);
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    throw new Error("META_TOKEN_ENCRYPTION_KEY must be base64 encoded.");
+  }
+}
+
+function encodeBase64(value: Uint8Array) {
+  return btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join(""));
+}
+
+async function encryptAccessToken(token: string, keyBase64: string) {
+  const rawKey = decodeBase64(keyBase64);
+  if (rawKey.length !== 32) throw new Error("META_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes.");
+  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(token));
+  return "v1:" + encodeBase64(iv) + ":" + encodeBase64(new Uint8Array(encrypted));
+}
+
+async function hmacHex(secret: string, value: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function metaJson(url: URL, token?: string, method = "GET") {
+  const response = await fetch(url, {
+    method,
+    headers: token ? { Authorization: "Bearer " + token } : {},
+  });
+  const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new Error("Meta API request failed (HTTP " + response.status + ").");
+  return body;
+}
+
+export const createWhatsAppConnectionSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { agencyId, userId } = await requireAgencyAdmin(context.supabase, context.userId);
+    const config = requiredMetaConfig();
+    const state = crypto.randomUUID();
+    const stateHash = await sha256Hex(state);
+    const admin = adminClient();
+    const { error } = await admin.from("whatsapp_connection_sessions").insert({
+      agency_id: agencyId,
+      user_id: userId,
+      config_id: config.configId,
+      state_hash: stateHash,
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    });
+    if (error) throw new Error("Could not create a secure WhatsApp connection session.");
+    return { state, appId: config.appId, configId: config.configId, graphApiVersion: config.graphApiVersion };
+  });
+
+export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({
+    state: z.string().uuid(),
+    code: z.string().min(1).max(4096),
+    wabaId: z.string().regex(/^\d{5,30}$/),
+    phoneNumberId: z.string().regex(/^\d{5,30}$/),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { agencyId, userId } = await requireAgencyAdmin(context.supabase, context.userId);
+    const config = requiredMetaConfig();
+    const admin = adminClient();
+    const stateHash = await sha256Hex(data.state);
+    const { data: session, error: sessionError } = await admin
+      .from("whatsapp_connection_sessions")
+      .select("id, agency_id, user_id, config_id, expires_at, consumed_at")
+      .eq("state_hash", stateHash)
+      .eq("agency_id", agencyId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (sessionError || !session || session.consumed_at || new Date(session.expires_at).getTime() <= Date.now()) {
+      throw new Error("WhatsApp connection session is invalid or expired. Start again.");
+    }
+    if (session.config_id !== config.configId) throw new Error("The Meta signup configuration changed. Start again.");
+
+    // Consume the nonce before exchanging the one-use Meta code to prevent replay.
+    const { data: consumed, error: consumeError } = await admin
+      .from("whatsapp_connection_sessions")
+      .update({ consumed_at: new Date().toISOString() })
+      .eq("id", session.id)
+      .is("consumed_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .select("id")
+      .maybeSingle();
+    if (consumeError || !consumed) throw new Error("WhatsApp connection session has already been used.");
+
+    const tokenUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/oauth/access_token");
+    tokenUrl.searchParams.set("client_id", config.appId);
+    tokenUrl.searchParams.set("client_secret", config.appSecret);
+    tokenUrl.searchParams.set("code", data.code);
+    const tokenResult = await metaJson(tokenUrl);
+    const accessToken = typeof tokenResult.access_token === "string" ? tokenResult.access_token : "";
+    if (!accessToken) throw new Error("Meta did not return an access token.");
+
+    // Verify the token belongs to this app and has the WhatsApp permissions needed.
+    const debugUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/debug_token");
+    debugUrl.searchParams.set("input_token", accessToken);
+    debugUrl.searchParams.set("access_token", config.appId + "|" + config.appSecret);
+    const debugResult = await metaJson(debugUrl);
+    const tokenData = debugResult.data as { is_valid?: boolean; app_id?: string; scopes?: string[] } | undefined;
+    if (!tokenData?.is_valid || tokenData.app_id !== config.appId) throw new Error("Meta returned a token that is not valid for this app.");
+    const scopes = tokenData.scopes ?? [];
+    if (!scopes.includes("whatsapp_business_management") || !scopes.includes("whatsapp_business_messaging")) {
+      throw new Error("The connected Meta account did not grant the required WhatsApp permissions.");
+    }
+
+    const proof = await hmacHex(config.appSecret, accessToken);
+    const numbersUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/" + data.wabaId + "/phone_numbers");
+    numbersUrl.searchParams.set("fields", "id,display_phone_number,verified_name");
+    numbersUrl.searchParams.set("appsecret_proof", proof);
+    const numberResult = await metaJson(numbersUrl, accessToken);
+    const numbers = Array.isArray(numberResult.data) ? numberResult.data as Array<{ id?: string; display_phone_number?: string; verified_name?: string }> : [];
+    const phone = numbers.find((item) => item.id === data.phoneNumberId);
+    if (!phone) throw new Error("The selected phone number could not be verified under the authorized WhatsApp Business Account.");
+
+    const subscribeUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/" + data.wabaId + "/subscribed_apps");
+    subscribeUrl.searchParams.set("appsecret_proof", proof);
+    await metaJson(subscribeUrl, accessToken, "POST");
+
+    const encryptedToken = await encryptAccessToken(accessToken, config.encryptionKey);
+    const now = new Date();
+    const expiresAt = typeof tokenResult.expires_in === "number"
+      ? new Date(now.getTime() + tokenResult.expires_in * 1000).toISOString()
+      : null;
+    const { error: saveError } = await admin.from("whatsapp_configs").upsert({
+      agency_id: agencyId,
+      waba_id: data.wabaId,
+      phone_number_id: data.phoneNumberId,
+      access_token_encrypted: encryptedToken,
+      token_key_version: 1,
+      access_token_expires_at: expiresAt,
+      whatsapp_number: phone.display_phone_number ?? null,
+      display_name: phone.verified_name ?? null,
+      connection_status: "connected",
+      connection_error: null,
+      connected_at: now.toISOString(),
+      connected_by: userId,
+      webhook_subscribed_at: now.toISOString(),
+      last_connected_at: now.toISOString(),
+      ai_enabled: false,
+    }, { onConflict: "agency_id" });
+    if (saveError?.code === "23505") throw new Error("This WhatsApp number is already connected to another agency.");
+    if (saveError) throw new Error("Meta connection succeeded but the agency configuration could not be saved. Contact support before retrying.");
+    return { connected: true, phoneNumber: phone.display_phone_number ?? null, displayName: phone.verified_name ?? null };
+  });

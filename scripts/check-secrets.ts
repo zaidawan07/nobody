@@ -18,7 +18,7 @@ const detectors: Array<{ label: string; pattern: RegExp }> = [
   { label: "credential-bearing database URL", pattern: /postgres(?:ql)?:\/\/[^\s"'\x60]+:[^\s"'\x60@]+@[^\s"'\x60]+/i },
   {
     label: "non-empty server-secret assignment",
-    pattern: /(?:SUPABASE_SERVICE_ROLE_KEY|PLATFORM_BOOTSTRAP_SECRET|META_APP_SECRET|META_TOKEN_ENCRYPTION_KEY|META_WEBHOOK_VERIFY_TOKEN|OPENAI_API_KEY)\s*=\s*["']?([^\s"'#]{12,})/m,
+    pattern: /(?:SUPABASE_SERVICE_ROLE_KEY|PLATFORM_BOOTSTRAP_SECRET|META_APP_SECRET|META_TOKEN_ENCRYPTION_KEY|META_WEBHOOK_VERIFY_TOKEN|OPENAI_API_KEY)[ \t]*=[ \t]*["']?((?!process\.env|Deno\.env|import\.meta\.env)[^\s"'#]{12,})/m,
   },
 ];
 

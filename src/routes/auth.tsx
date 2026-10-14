@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyAccess } from "@/lib/access.functions";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -23,7 +23,13 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<"signin" | "reset">("signin");
+  const [mode, setMode] = useState<"signin" | "reset" | "new-password">("signin");
+
+  useEffect(() => {
+    if (window.location.hash.includes("type=recovery") || new URLSearchParams(window.location.search).get("type") === "recovery") {
+      setMode("new-password");
+    }
+  }, []);
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -33,10 +39,17 @@ function AuthPage() {
     try {
       if (mode === "reset") {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth`,
+          redirectTo: window.location.origin + "/auth",
         });
         if (error) throw error;
         setNotice({ kind: "success", text: "If an account exists for that email, a reset link has been sent." });
+      } else if (mode === "new-password") {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        await supabase.auth.signOut();
+        setPassword("");
+        setMode("signin");
+        setNotice({ kind: "success", text: "Password updated. Sign in with your new password." });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -86,7 +99,7 @@ function AuthPage() {
 
         <div className="surface-panel mx-auto w-full max-w-md p-6 sm:p-8">
           <div className="mb-6 flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><KeyRound className="size-5" /></div>
-          <h2 className="text-2xl font-semibold">{mode === "signin" ? "Welcome back" : "Reset your password"}</h2>
+          <h2 className="text-2xl font-semibold">{mode === "signin" ? "Welcome back" : mode === "reset" ? "Reset your password" : "Choose a new password"}</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {mode === "signin" ? "Use the email and password provided by your platform or agency administrator." : "We'll email you a secure password reset link if the account exists."}
           </p>
@@ -98,11 +111,11 @@ function AuthPage() {
                 <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@agency.com" className="h-11 w-full rounded-lg border border-input bg-background pl-10 pr-3 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring" />
               </div>
             </div>
-            {mode === "signin" ? (
+            {mode !== "reset" ? (
               <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium">Password</label>
+                <label htmlFor="password" className="text-sm font-medium">{mode === "new-password" ? "New password" : "Password"}</label>
                 <div className="relative">
-                  <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" className="h-11 w-full rounded-lg border border-input bg-background px-3 pr-11 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring" />
+                  <input id="password" type={showPassword ? "text" : "password"} autoComplete={mode === "new-password" ? "new-password" : "current-password"} required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "new-password" ? "Choose at least 8 characters" : "Enter your password"} className="h-11 w-full rounded-lg border border-input bg-background px-3 pr-11 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring" />
                   <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
@@ -111,12 +124,14 @@ function AuthPage() {
             ) : null}
             {notice ? <p role="status" className={`rounded-lg p-3 text-sm ${notice.kind === "error" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{notice.text}</p> : null}
             <button type="submit" disabled={busy} className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">
-              {busy ? "Please wait…" : mode === "signin" ? "Sign in securely" : "Send reset link"}
+              {busy ? "Please wait…" : mode === "signin" ? "Sign in securely" : mode === "reset" ? "Send reset link" : "Update password"}
             </button>
           </form>
-          <button type="button" onClick={() => { setMode(mode === "signin" ? "reset" : "signin"); setNotice(null); }} className="mt-4 w-full text-center text-sm font-medium text-primary hover:underline">
-            {mode === "signin" ? "Forgot your password?" : "Back to sign in"}
-          </button>
+          {mode !== "new-password" ? (
+            <button type="button" onClick={() => { setMode(mode === "signin" ? "reset" : "signin"); setNotice(null); }} className="mt-4 w-full text-center text-sm font-medium text-primary hover:underline">
+              {mode === "signin" ? "Forgot your password?" : "Back to sign in"}
+            </button>
+          ) : null}
           <p className="mt-6 border-t border-border pt-5 text-xs leading-5 text-muted-foreground">
             Accounts are created by the platform owner or your agency administrator. Public self-registration is disabled to protect agency data.
           </p>

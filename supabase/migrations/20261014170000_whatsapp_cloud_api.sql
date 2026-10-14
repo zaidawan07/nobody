@@ -93,7 +93,7 @@ GRANT SELECT (
   auto_create_leads, last_connected_at, created_at, updated_at
 ) ON TABLE public.whatsapp_configs TO authenticated;
 GRANT UPDATE (
-  whatsapp_number, display_name, ai_enabled, ai_greeting, ai_language, ai_tone,
+  whatsapp_number, display_name, ai_greeting, ai_language, ai_tone,
   ai_instructions, handoff_keywords, auto_create_leads
 ) ON TABLE public.whatsapp_configs TO authenticated;
 GRANT ALL ON TABLE public.whatsapp_configs TO service_role;

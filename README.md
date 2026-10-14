@@ -10,10 +10,10 @@ EstateOS is a multi-tenant real-estate operations app for Pakistani property age
 - **Agency workspace:** inventory, private property photos, leads and budgets in PKR, assignments, site visits, and due-dated follow-up tasks.
 - **Team and settings:** agency-admin and employee roles, account status controls, self-service profile settings, and agency contact/service-area settings.
 - **Reports:** activity KPIs and spreadsheet-safe CSV exports for properties, leads, and site visits.
-- **WhatsApp foundation:** Meta Embedded Signup, encrypted server-side access tokens, signed webhook verification, durable event storage, duplicate-event handling, delivery status updates, opt-out handling, and a retrying worker.
+- **WhatsApp automation:** Meta Embedded Signup, encrypted server-side access tokens, signed webhook verification, durable event storage, delivery status updates, opt-out/handoff handling, bounded AI replies using agency inventory, automatic lead capture, and a retrying worker.
 - **Security:** tenant-scoped database policies, same-agency relationship constraints, profile field restrictions, server-owned messaging state, and automated checks.
 
-WhatsApp AI replies and template sends are intentionally not enabled. Human replies are restricted to the supported customer-service window. The webhook worker must be invoked on a schedule and monitored before live ingestion is relied on.
+AI replies default to off and can only be enabled after server-side OpenAI/Meta configuration and a connected WhatsApp number are verified. Replies use only the current agency's available inventory, enforce opt-out/human-handoff and the 24-hour window, and have configurable daily/per-conversation caps. Approved template sends remain disabled. The webhook worker must be invoked on a schedule and monitored before live ingestion is relied on.
 
 ## Stack
 
@@ -66,6 +66,10 @@ Meta WhatsApp variables (configure only during the final integration phase):
 - `META_GRAPH_API_VERSION` (defaults to `v25.0` in the server code)
 - `META_TOKEN_ENCRYPTION_KEY` — base64-encoded 32-byte AES-GCM key.
 - `META_WEBHOOK_VERIFY_TOKEN` — webhook verification secret.
+- `OPENAI_API_KEY` — AI provider key (server-only; configure in both app hosting and Supabase Edge Function secrets).
+- `OPENAI_MODEL` — defaults to `gpt-4o-mini`.
+- `AI_MAX_REPLIES_PER_AGENCY_PER_DAY` — defaults to `500`.
+- `AI_MAX_REPLIES_PER_CONVERSATION_PER_HOUR` — defaults to `20`.
 
 Set server-side secrets in the hosting environment and Edge Function secrets in Supabase. Do not commit real credentials. The service-role key, Meta app secret, encryption key, and bootstrap secret must never be sent to the browser.
 
@@ -78,7 +82,7 @@ Property images use private storage and signed access paths. Verify bucket polic
 ## WhatsApp release checklist
 
 - Configure the Meta app, WhatsApp product, Embedded Signup configuration, permissions, and allowed callback URLs.
-- Add the server and Edge Function secrets listed above.
+- Add the server and Edge Function secrets listed above, including `OPENAI_API_KEY` and the same Meta token-encryption/app-secret values to the worker environment.
 - Deploy the webhook and worker functions only after testing against a non-production WhatsApp number.
 - Configure a recurring, authenticated worker invocation; alert on failed/dead-lettered events and monitor queue age.
 - Test webhook signatures, duplicate delivery, worker retries/crash recovery, inbound messages, delivery statuses, opt-out keywords, and the 24-hour service window.

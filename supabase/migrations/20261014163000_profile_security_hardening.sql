@@ -35,6 +35,67 @@ AS $$
     AND a.status = 'active';
 $$;
 
+-- Make role helper functions honor account suspension, including direct PostgREST access.
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    JOIN public.profiles p ON p.id = ur.user_id
+    WHERE ur.user_id = auth.uid()
+      AND ur.role = 'super_admin'
+      AND p.status = 'active'
+      AND p.agency_id IS NULL
+  );
+$;
+
+CREATE OR REPLACE FUNCTION public.is_agency_admin(_agency_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    JOIN public.profiles p ON p.id = ur.user_id
+    JOIN public.agencies a ON a.id = ur.agency_id
+    WHERE ur.user_id = auth.uid()
+      AND ur.role = 'agency_admin'
+      AND ur.agency_id = _agency_id
+      AND p.agency_id = _agency_id
+      AND p.status = 'active'
+      AND a.status = 'active'
+  );
+$;
+
+-- has_role is called by server functions for the authenticated caller. Do not
+-- allow clients to probe role membership for arbitrary user IDs via RPC.
+CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role public.app_role)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $
+  SELECT _user_id = auth.uid() AND EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    JOIN public.profiles p ON p.id = ur.user_id
+    LEFT JOIN public.agencies a ON a.id = p.agency_id
+    WHERE ur.user_id = auth.uid()
+      AND ur.role = _role
+      AND p.status = 'active'
+      AND (p.agency_id IS NULL OR a.status = 'active')
+  );
+$;
+
 -- Client-side provisioning is not permitted; trusted server functions use service_role.
 REVOKE INSERT, DELETE ON TABLE public.agencies FROM PUBLIC, anon, authenticated;
 REVOKE INSERT, DELETE ON TABLE public.profiles FROM PUBLIC, anon, authenticated;

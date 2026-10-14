@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Pencil, Plus, Search, UserRound } from "lucide-react";
+import { History, Pencil, Plus, Search, UserRound } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccess } from "@/hooks/useAccess";
@@ -34,6 +34,7 @@ function LeadsPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<LeadStatus | "all">("all");
+  const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
@@ -59,6 +60,21 @@ function LeadsPage() {
     queryKey: ["leads", access.data?.agencyId],
     queryFn: async () => {
       const { data, error } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const activity = useQuery({
+    queryKey: ["lead-activities", access.data?.agencyId, activityLeadId],
+    enabled: !!access.data?.agencyId && !!activityLeadId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("lead_activities")
+        .select("id,lead_id,actor_id,activity_type,description,metadata,created_at")
+        .eq("agency_id", access.data!.agencyId!)
+        .eq("lead_id", activityLeadId!)
+        .order("created_at", { ascending: false })
+        .limit(50);
       if (error) throw error;
       return data;
     },
@@ -153,6 +169,7 @@ function LeadsPage() {
       resetForm();
       setShowForm(false);
       await client.invalidateQueries({ queryKey: ["leads"] });
+      await client.invalidateQueries({ queryKey: ["lead-activities"] });
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save the lead.");
     } finally {
@@ -164,7 +181,10 @@ function LeadsPage() {
     setError("");
     const result = await supabase.from("leads").update({ status }).eq("id", id);
     if (result.error) setError(result.error.message);
-    else await client.invalidateQueries({ queryKey: ["leads"] });
+    else {
+      await client.invalidateQueries({ queryKey: ["leads"] });
+      await client.invalidateQueries({ queryKey: ["lead-activities", access.data?.agencyId, id] });
+    }
   }
 
   function toggleForm() {
@@ -303,7 +323,15 @@ function LeadsPage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-4 text-xs text-muted-foreground">{new Date(lead.created_at).toLocaleDateString()}</td>
                     <td className="px-4 py-4">
-                      <button onClick={() => startEditing(lead)} className="inline-flex h-9 items-center gap-2 rounded-md border border-input px-3 text-xs font-medium"><Pencil className="size-3.5" /> Edit</button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => startEditing(lead)} className="inline-flex h-9 items-center gap-2 rounded-md border border-input px-3 text-xs font-medium"><Pencil className="size-3.5" /> Edit</button>
+                        <button
+                          type="button"
+                          aria-label={`View activity for ${lead.name || lead.phone || "lead"}`}
+                          onClick={() => setActivityLeadId(activityLeadId === lead.id ? null : lead.id)}
+                          className="inline-flex h-9 items-center gap-2 rounded-md border border-input px-3 text-xs font-medium"
+                        ><History className="size-3.5" /> History</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -312,6 +340,40 @@ function LeadsPage() {
           </div>
         )}
       </div>
+
+      {activityLeadId ? (
+        <section className="surface-panel mt-5 p-5" aria-labelledby="lead-activity-title">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="lead-activity-title" className="font-semibold">Activity history</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {list.data?.find((lead) => lead.id === activityLeadId)?.name || "Selected lead"} · latest 50 events
+              </p>
+            </div>
+            <button type="button" onClick={() => setActivityLeadId(null)} className="h-9 rounded-lg border border-input px-3 text-sm">Close history</button>
+          </div>
+          {activity.isLoading ? <p className="mt-4 text-sm text-muted-foreground">Loading activity…</p> : null}
+          {activity.isError ? <p role="alert" className="mt-4 text-sm text-destructive">Could not load this lead's activity history.</p> : null}
+          {!activity.isLoading && !activity.isError && (activity.data ?? []).length === 0 ? (
+            <p className="mt-4 rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">No activity recorded yet. New changes will appear here.</p>
+          ) : null}
+          {(activity.data ?? []).length > 0 ? (
+            <ol className="mt-5 space-y-4">
+              {activity.data.map((item) => (
+                <li key={item.id} className="flex gap-3">
+                  <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{item.description}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {item.actor_id ? teammates.get(item.actor_id) || "Team member" : "System / integration"} · {new Date(item.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
     </AppShell>
   );
 }

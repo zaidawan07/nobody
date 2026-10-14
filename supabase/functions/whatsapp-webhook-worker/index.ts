@@ -306,21 +306,36 @@ async function maybeSendAiReply(
   const configuredHourlyLimit = Number(Deno.env.get("AI_MAX_REPLIES_PER_CONVERSATION_PER_HOUR") || "20");
   const dailyLimit = Number.isSafeInteger(configuredDailyLimit) && configuredDailyLimit > 0 ? configuredDailyLimit : 500;
   const hourlyLimit = Number.isSafeInteger(configuredHourlyLimit) && configuredHourlyLimit > 0 ? configuredHourlyLimit : 20;
-  const [dailyUsage, conversationUsage, freshConversation] = await Promise.all([
+  const [dailyUsage, conversationUsage, freshConversation, subscriptionResult] = await Promise.all([
     admin.from("conversation_messages").select("id", { count: "exact", head: true })
       .eq("agency_id", event.agency_id).eq("sender", "ai").gte("created_at", dayStart),
     admin.from("conversation_messages").select("id", { count: "exact", head: true })
       .eq("agency_id", event.agency_id).eq("conversation_id", conversation.id).eq("sender", "ai").gte("created_at", hourAgo),
     admin.from("conversations").select("state,handoff_requested,opted_out_at,last_customer_message_at")
       .eq("agency_id", event.agency_id).eq("id", conversation.id).maybeSingle(),
+    admin.from("agency_subscriptions")
+      .select("status,current_period_end,plan:subscription_plans(max_ai_replies_per_day,is_active)")
+      .eq("agency_id", event.agency_id).maybeSingle(),
   ]);
-  if (dailyUsage.error || conversationUsage.error || freshConversation.error) {
+  if (dailyUsage.error || conversationUsage.error || freshConversation.error || subscriptionResult.error) {
     throw new Error("Could not verify AI safety limits and conversation state.");
   }
   if (!freshConversation.data || freshConversation.data.state !== "ai_active" || freshConversation.data.handoff_requested || freshConversation.data.opted_out_at) return;
   const freshInboundAt = freshConversation.data.last_customer_message_at ? new Date(freshConversation.data.last_customer_message_at).getTime() : Number.NaN;
   if (!Number.isFinite(freshInboundAt) || Date.now() - freshInboundAt > 24 * 60 * 60 * 1000) return;
-  if ((dailyUsage.count ?? 0) >= dailyLimit || (conversationUsage.count ?? 0) >= hourlyLimit) {
+  const subscription = subscriptionResult.data as {
+    status?: string;
+    current_period_end?: string | null;
+    plan?: { max_ai_replies_per_day?: number; is_active?: boolean } | null;
+  } | null;
+  if (!subscription || !["active", "trialing"].includes(subscription.status ?? "") ||
+      (subscription.current_period_end && new Date(subscription.current_period_end).getTime() <= Date.now()) ||
+      !subscription.plan?.is_active || !subscription.plan.max_ai_replies_per_day) {
+    await handoff("The current subscription does not include active AI replies; human follow-up is required.");
+    return;
+  }
+  const effectiveDailyLimit = Math.min(dailyLimit, subscription.plan.max_ai_replies_per_day);
+  if ((dailyUsage.count ?? 0) >= effectiveDailyLimit || (conversationUsage.count ?? 0) >= hourlyLimit) {
     await handoff("Automated reply safety limit reached; human follow-up is required.");
     return;
   }

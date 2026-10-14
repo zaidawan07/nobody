@@ -6,7 +6,7 @@ import { Bot, MessageCircle, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccess } from "@/hooks/useAccess";
-import { completeWhatsAppEmbeddedSignup, createWhatsAppConnectionSession } from "@/lib/whatsapp.functions";
+import { completeWhatsAppEmbeddedSignup, createWhatsAppConnectionSession, registerWhatsAppPhoneNumber } from "@/lib/whatsapp.functions";
 
 type FacebookLoginResponse = { authResponse?: { code?: string } | null };
 type FacebookSdk = {
@@ -27,8 +27,10 @@ function WhatsAppSettings() {
   const access = useAccess(), client = useQueryClient();
   const startConnection = useServerFn(createWhatsAppConnectionSession);
   const finishConnection = useServerFn(completeWhatsAppEmbeddedSignup);
+  const registerPhone = useServerFn(registerWhatsAppPhoneNumber);
   const [greeting, setGreeting] = useState(""), [instructions, setInstructions] = useState(""), [language, setLanguage] = useState("auto"), [tone, setTone] = useState("friendly"), [autoLead, setAutoLead] = useState(true), [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const [sdkReady, setSdkReady] = useState(false), [connecting, setConnecting] = useState(false), [connectNotice, setConnectNotice] = useState("");
+  const [registrationPin, setRegistrationPin] = useState(""), [registering, setRegistering] = useState(false);
   const [preparedSession, setPreparedSession] = useState<SignupSession | null>(null);
   const [authCode, setAuthCode] = useState(""), [wabaId, setWabaId] = useState(""), [phoneNumberId, setPhoneNumberId] = useState("");
   const completionStarted = useRef(false);
@@ -111,7 +113,7 @@ function WhatsAppSettings() {
     setConnectNotice("Verifying the selected WhatsApp business and securely saving the connection…");
     void finishConnection({ data: { state: preparedSession.state, code: authCode, wabaId, phoneNumberId } })
       .then(async (result) => {
-        setConnectNotice("WhatsApp connected for " + (result.phoneNumber ?? "your agency") + ". AI remains off until the messaging safeguards are enabled.");
+        setConnectNotice(result.needsPin ? "Meta assets are linked. Enter the six-digit phone registration PIN below to finish setup." : "WhatsApp connected for " + (result.phoneNumber ?? "your agency") + ". AI remains off until the messaging safeguards are enabled.");
         await client.invalidateQueries({ queryKey: ["whatsapp-config"] });
       })
       .catch((error: unknown) => {
@@ -144,6 +146,21 @@ function WhatsAppSettings() {
     }, { config_id: preparedSession.configId, response_type: "code", override_default_response_type: true, extras: { setup: {} } });
   }
 
+  async function registerPhoneNumber(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRegistering(true); setConnectNotice("");
+    try {
+      await registerPhone({ data: { pin: registrationPin } });
+      setRegistrationPin("");
+      setConnectNotice("WhatsApp phone registration succeeded. AI remains disabled until outbound safeguards are deployed.");
+      await client.invalidateQueries({ queryKey: ["whatsapp-config"] });
+    } catch (error) {
+      setConnectNotice(error instanceof Error ? error.message : "Phone registration failed. Verify the PIN and try again.");
+    } finally {
+      setRegistering(false);
+    }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!config.data) { setNotice("WhatsApp configuration is not provisioned for this agency."); return; }
@@ -171,6 +188,11 @@ function WhatsAppSettings() {
         {access.data?.role !== "agency_admin" ? <p className="mt-3 text-xs text-muted-foreground">Ask your agency administrator to connect the WhatsApp number.</p> : null}
         <button onClick={launchSignup} disabled={access.data?.role !== "agency_admin" || !sdkReady || !preparedSession || connecting} className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">{connecting ? "Connecting…" : config.data?.connection_status === "connected" ? "Reconnect with Meta" : "Connect with Meta"}</button>
         {connectNotice ? <p role="status" className="mt-3 rounded-lg bg-muted p-3 text-sm">{connectNotice}</p> : null}
+        {config.data?.connection_status === "pending" ? <form onSubmit={registerPhoneNumber} className="mt-4 space-y-3 rounded-lg border border-border p-3">
+          <label className="block space-y-1.5 text-sm font-medium">Six-digit phone registration PIN<input required inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} type="password" autoComplete="off" value={registrationPin} onChange={e => setRegistrationPin(e.target.value.replace(/\\D/g, "").slice(0, 6))} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="••••••"/></label>
+          <p className="text-xs text-muted-foreground">This is the six-digit PIN used for WhatsApp two-step verification, not your Meta password.</p>
+          <button disabled={registering || registrationPin.length !== 6} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-60">{registering ? "Registering…" : "Register phone number"}</button>
+        </form> : null}
       </div>
       <div className="surface-panel p-5"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="size-5"/></span><div><h2 className="font-semibold">Safety controls</h2><p className="text-sm text-muted-foreground">Human takeover always wins.</p></div></div><p className="mt-4 text-sm text-muted-foreground">Incoming messages are verified, mapped to a tenant by phone-number ID, and placed in a durable queue. Automated replies stay disabled until opt-out, template, 24-hour-window, quota and human-handoff rules are enforced.</p></div>
     </div>

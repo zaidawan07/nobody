@@ -1,3 +1,4 @@
+import { isHandoffRequest, isOptOutRequest } from "../_shared/whatsapp-safety.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 type AdminClient = SupabaseClient<any, "public", any>;
 
@@ -113,24 +114,7 @@ async function deterministicRequestId(value: string): Promise<string> {
 }
 
 
-function isOptOutRequest(body: string): boolean {
-  const normalized = body.trim().toLocaleUpperCase().replace(/[.!?,;]+$/g, "").trim();
-  const exactCommands = new Set(["STOP", "STOP ALL", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REMOVE", "OPT OUT", "OPT-OUT", "روکیں", "بند کریں"]);
-  const phrases = [
-    "PLEASE STOP", "STOP MESSAGING", "DO NOT MESSAGE", "DON'T MESSAGE",
-    "UNSUBSCRIBE ME", "REMOVE ME", "مزید پیغام نہ بھیجیں",
-  ];
-  return exactCommands.has(normalized) || phrases.some((phrase) => normalized.startsWith(phrase + " ") || normalized === phrase);
-}
 
-function isHandoffRequest(body: string, configuredKeywords: string[] | null | undefined): boolean {
-  const normalized = body.trim().toLocaleLowerCase();
-  const defaults = ["human", "real person", "live agent", "talk to agent", "speak to someone", "representative", "call me", "انسان", "ایجنٹ", "نمائندہ"];
-  const keywords = [...defaults, ...(configuredKeywords ?? [])]
-    .map((keyword) => keyword.trim().toLocaleLowerCase())
-    .filter((keyword) => keyword.length >= 2);
-  return keywords.some((keyword) => normalized.includes(keyword));
-}
 
 async function maybeCreateLead(
   admin: AdminClient,

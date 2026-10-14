@@ -24,10 +24,19 @@ ALTER TABLE public.conversation_messages
   ADD COLUMN IF NOT EXISTS read_at timestamptz,
   ADD COLUMN IF NOT EXISTS failed_at timestamptz,
   ADD COLUMN IF NOT EXISTS error_code text,
-  ADD COLUMN IF NOT EXISTS error_message text;
+  ADD COLUMN IF NOT EXISTS error_message text,
+  ADD COLUMN IF NOT EXISTS client_request_id uuid,
+  ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS conversation_messages_provider_message_id_uidx
   ON public.conversation_messages (provider_message_id);
+CREATE UNIQUE INDEX IF NOT EXISTS conversation_messages_client_request_id_uidx
+  ON public.conversation_messages (client_request_id);
+
+ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS last_customer_message_at timestamptz,
+  ADD COLUMN IF NOT EXISTS opted_out_at timestamptz,
+  ADD COLUMN IF NOT EXISTS opt_out_reason text;
 
 CREATE TABLE IF NOT EXISTS public.whatsapp_connection_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -78,3 +87,7 @@ GRANT UPDATE (
   ai_instructions, handoff_keywords, auto_create_leads
 ) ON TABLE public.whatsapp_configs TO authenticated;
 GRANT ALL ON TABLE public.whatsapp_configs TO service_role;
+
+-- Message records are written only by trusted server code after provider validation.
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.conversation_messages FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.conversation_messages TO authenticated;

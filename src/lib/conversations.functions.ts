@@ -1,4 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -12,7 +14,7 @@ const internalNoteSchema = z.object({
   body: z.string().trim().min(1).max(2000),
 });
 
-async function getActiveAgency(context: { supabase: any; userId: string }) {
+async function getActiveAgency(context: { supabase: SupabaseClient<Database>; userId: string }) {
   const { data: actor, error } = await context.supabase
     .from("profiles")
     .select("agency_id,status")
@@ -27,7 +29,7 @@ async function getActiveAgency(context: { supabase: any; userId: string }) {
 }
 
 async function assertConversationInAgency(
-  admin: any,
+  admin: SupabaseClient<Database>,
   conversationId: string,
   agencyId: string,
 ) {

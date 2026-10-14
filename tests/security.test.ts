@@ -238,6 +238,9 @@ describe("subscription request route wiring", () => {
     expect(route).toContain("requestSubscriptionChange");
     expect(route).toContain("submitPlanRequest({ data: { planId, note: note.trim() } })");
     expect(server).toContain("subscriptionRequestSchema");
-    expect(server).toContain("subscription_change_requests_one_open_per_agency_idx");
+    expect(server).toContain('eq("status", "open")');
+    expect(server).toContain("That subscription plan is unavailable.");
+    const migration = readFileSync(new URL("../supabase/migrations/20261014220000_subscriptions_and_limits.sql", import.meta.url), "utf8");
+    expect(migration).toContain("subscription_change_requests_one_open_per_agency_idx");
   });
 });

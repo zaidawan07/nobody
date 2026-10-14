@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { getMyAccess } from "@/lib/access.functions";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Eye, EyeOff, KeyRound, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +18,7 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const navigate = useNavigate();
+  const fetchAccess = useServerFn(getMyAccess);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -37,7 +40,16 @@ function AuthPage() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        await navigate({ to: "/agency", replace: true });
+        const access = await fetchAccess();
+        if (!access.platformHasSuperAdmin) {
+          await navigate({ to: "/bootstrap", replace: true });
+        } else if (access.role === "super_admin") {
+          await navigate({ to: "/platform", replace: true });
+        } else if (access.role) {
+          await navigate({ to: "/agency", replace: true });
+        } else {
+          setNotice({ kind: "error", text: "Your account does not have an assigned role. Contact the platform owner." });
+        }
       }
     } catch (error) {
       setNotice({

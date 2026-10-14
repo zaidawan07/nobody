@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export type AppRole = "super_admin" | "agency_admin" | "employee";
@@ -57,13 +58,35 @@ export const getMyAccess = createServerFn({ method: "GET" })
     };
   });
 
+async function constantTimeSecretMatch(candidate: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [candidateHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(candidate)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  const left = new Uint8Array(candidateHash);
+  const right = new Uint8Array(expectedHash);
+  let difference = 0;
+  for (let i = 0; i < left.length; i += 1) difference |= left[i] ^ right[i];
+  return difference === 0;
+}
+
 /**
  * Bootstrap: the very first account on a fresh platform can claim the
  * super admin seat. Once one exists, this is permanently closed.
  */
 export const claimSuperAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input: unknown) => z.object({ bootstrapSecret: z.string().min(1).max(512) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const expectedSecret = process.env["PLATFORM_BOOTSTRAP_SECRET"];
+    if (!expectedSecret) {
+      throw new Error("Platform bootstrap is disabled until PLATFORM_BOOTSTRAP_SECRET is configured.");
+    }
+    if (!(await constantTimeSecretMatch(data.bootstrapSecret, expectedSecret))) {
+      throw new Error("Invalid platform bootstrap secret.");
+    }
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { count, error: countError } = await supabaseAdmin
       .from("user_roles")

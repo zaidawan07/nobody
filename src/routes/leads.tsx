@@ -359,7 +359,7 @@ function LeadsPage() {
           ) : null}
           {(activity.data ?? []).length > 0 ? (
             <ol className="mt-5 space-y-4">
-              {activity.data.map((item) => (
+              {(activity.data ?? []).map((item) => (
                 <li key={item.id} className="flex gap-3">
                   <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
                   <div className="min-w-0 flex-1">

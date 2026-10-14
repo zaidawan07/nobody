@@ -253,7 +253,7 @@ export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
 
 export const registerWhatsAppPhoneNumber = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ pin: z.string().regex(/^\\d{6}$/) }).parse(input))
+  .inputValidator((input: unknown) => z.object({ pin: z.string().regex(/^\d{6}$/) }).parse(input))
   .handler(async ({ data, context }) => {
     const { agencyId } = await requireAgencyAdmin(context.supabase, context.userId);
     const config = requiredMetaConfig();

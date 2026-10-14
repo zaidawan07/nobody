@@ -460,3 +460,28 @@ export const setWhatsAppAiEnabled = createServerFn({ method: "POST" })
     if (error) throw new Error("Could not disable AI replies.");
     return { enabled: false };
   });
+
+
+/** Persist bounded assistant settings for the current agency only. */
+export const saveWhatsAppPreferences = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({
+    greeting: z.string().trim().max(500),
+    instructions: z.string().trim().max(2000),
+    language: z.enum(["auto", "ur", "en", "ur-en"]),
+    tone: z.enum(["friendly", "professional", "concise"]),
+    autoCreateLeads: z.boolean(),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { agencyId } = await requireAgencyAdmin(context.supabase, context.userId);
+    const admin = adminClient();
+    const { error } = await admin.from("whatsapp_configs").update({
+      ai_greeting: data.greeting || null,
+      ai_instructions: data.instructions || null,
+      ai_language: data.language,
+      ai_tone: data.tone,
+      auto_create_leads: data.autoCreateLeads,
+    }).eq("agency_id", agencyId);
+    if (error) throw new Error("Could not save WhatsApp assistant preferences.");
+    return { ok: true };
+  });

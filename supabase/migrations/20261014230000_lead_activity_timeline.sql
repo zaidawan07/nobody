@@ -4,7 +4,7 @@ CREATE TABLE public.lead_activities (
   agency_id uuid NOT NULL REFERENCES public.agencies(id) ON DELETE CASCADE,
   lead_id uuid NOT NULL,
   actor_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-  activity_type text NOT NULL CHECK (activity_type IN ('created', 'status_changed', 'assignment_changed', 'details_updated')),
+  activity_type text NOT NULL CHECK (activity_type IN ('created', 'status_changed', 'assignment_changed', 'details_updated', 'communication')),
   description text NOT NULL CHECK (char_length(description) BETWEEN 1 AND 500),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -105,3 +105,48 @@ DROP TRIGGER IF EXISTS leads_record_activity_after_update ON public.leads;
 CREATE TRIGGER leads_record_activity_after_update
   AFTER UPDATE ON public.leads
   FOR EACH ROW EXECUTE FUNCTION public.record_lead_activity();
+
+
+-- Record only communication metadata, never message bodies, in the lead timeline.
+CREATE OR REPLACE FUNCTION public.record_lead_communication_activity()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_lead_id uuid;
+  v_description text;
+BEGIN
+  SELECT c.lead_id INTO v_lead_id
+  FROM public.conversations AS c
+  WHERE c.id = NEW.conversation_id
+    AND c.agency_id = NEW.agency_id;
+
+  IF v_lead_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  v_description := CASE NEW.sender::text
+    WHEN 'customer' THEN 'WhatsApp message received'
+    WHEN 'agent' THEN 'WhatsApp reply sent'
+    WHEN 'ai' THEN 'AI reply sent'
+    ELSE 'Conversation event recorded'
+  END;
+
+  INSERT INTO public.lead_activities (
+    agency_id, lead_id, actor_id, activity_type, description, metadata
+  ) VALUES (
+    NEW.agency_id, v_lead_id, auth.uid(), 'communication', v_description,
+    jsonb_build_object('sender', NEW.sender::text, 'provider_status', NEW.provider_status)
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS conversation_messages_record_lead_activity_after_insert
+  ON public.conversation_messages;
+CREATE TRIGGER conversation_messages_record_lead_activity_after_insert
+  AFTER INSERT ON public.conversation_messages
+  FOR EACH ROW EXECUTE FUNCTION public.record_lead_communication_activity();

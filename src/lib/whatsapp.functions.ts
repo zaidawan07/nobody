@@ -74,16 +74,27 @@ async function encryptAccessToken(token: string, keyBase64: string) {
   return "v1:" + encodeBase64(iv) + ":" + encodeBase64(new Uint8Array(encrypted));
 }
 
+async function decryptAccessToken(encryptedValue: string, keyBase64: string) {
+  const parts = encryptedValue.split(":");
+  if (parts.length !== 3 || parts[0] !== "v1") throw new Error("Unsupported encrypted WhatsApp token format.");
+  const rawKey = decodeBase64(keyBase64);
+  if (rawKey.length !== 32) throw new Error("META_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes.");
+  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: decodeBase64(parts[1]) }, key, decodeBase64(parts[2]));
+  return new TextDecoder().decode(plaintext);
+}
+
 async function hmacHex(secret: string, value: string) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
   return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function metaJson(url: URL, token?: string, method = "GET") {
+async function metaJson(url: URL, token?: string, method = "GET", body?: Record<string, unknown>) {
   const response = await fetch(url, {
     method,
-    headers: token ? { Authorization: "Bearer " + token } : {},
+    headers: { ...(token ? { Authorization: "Bearer " + token } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) throw new Error("Meta API request failed (HTTP " + response.status + ").");
@@ -167,22 +178,19 @@ export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
 
     const proof = await hmacHex(config.appSecret, accessToken);
     const numbersUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/" + data.wabaId + "/phone_numbers");
-    numbersUrl.searchParams.set("fields", "id,display_phone_number,verified_name");
+    numbersUrl.searchParams.set("fields", "id,display_phone_number,verified_name,status");
     numbersUrl.searchParams.set("appsecret_proof", proof);
     const numberResult = await metaJson(numbersUrl, accessToken);
     const numbers = Array.isArray(numberResult.data) ? numberResult.data as Array<{ id?: string; display_phone_number?: string; verified_name?: string }> : [];
     const phone = numbers.find((item) => item.id === data.phoneNumberId);
     if (!phone) throw new Error("The selected phone number could not be verified under the authorized WhatsApp Business Account.");
 
-    const subscribeUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/" + data.wabaId + "/subscribed_apps");
-    subscribeUrl.searchParams.set("appsecret_proof", proof);
-    await metaJson(subscribeUrl, accessToken, "POST");
-
     const encryptedToken = await encryptAccessToken(accessToken, config.encryptionKey);
     const now = new Date();
     const expiresAt = typeof tokenResult.expires_in === "number"
       ? new Date(now.getTime() + tokenResult.expires_in * 1000).toISOString()
       : null;
+    const alreadyRegistered = phone.status === "CONNECTED";
     const { error: saveError } = await admin.from("whatsapp_configs").upsert({
       agency_id: agencyId,
       waba_id: data.wabaId,
@@ -192,15 +200,83 @@ export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
       access_token_expires_at: expiresAt,
       whatsapp_number: phone.display_phone_number ?? null,
       display_name: phone.verified_name ?? null,
-      connection_status: "connected",
-      connection_error: null,
-      connected_at: now.toISOString(),
+      connection_status: alreadyRegistered ? "connected" : "pending",
+      connection_error: alreadyRegistered ? null : "Phone registration is required. Enter the six-digit WhatsApp registration PIN.",
+      connected_at: alreadyRegistered ? now.toISOString() : null,
       connected_by: userId,
-      webhook_subscribed_at: now.toISOString(),
+      webhook_subscribed_at: null,
       last_connected_at: now.toISOString(),
+      registration_attempts: 0,
       ai_enabled: false,
     }, { onConflict: "agency_id" });
     if (saveError?.code === "23505") throw new Error("This WhatsApp number is already connected to another agency.");
-    if (saveError) throw new Error("Meta connection succeeded but the agency configuration could not be saved. Contact support before retrying.");
-    return { connected: true, phoneNumber: phone.display_phone_number ?? null, displayName: phone.verified_name ?? null };
+    if (saveError) throw new Error("Meta assets were verified but the agency configuration could not be saved. Contact support before retrying.");
+
+    const subscribeUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/" + data.wabaId + "/subscribed_apps");
+    subscribeUrl.searchParams.set("appsecret_proof", proof);
+    try {
+      await metaJson(subscribeUrl, accessToken, "POST");
+    } catch {
+      await admin.from("whatsapp_configs").update({
+        connection_status: "error",
+        connection_error: "Meta webhook subscription failed. Reconnect after checking the Meta app's WhatsApp webhook setup.",
+      }).eq("agency_id", agencyId);
+      throw new Error("Meta could not subscribe this business account to webhooks. Check the Meta app webhook setup and reconnect.");
+    }
+    await admin.from("whatsapp_configs").update({ webhook_subscribed_at: new Date().toISOString() }).eq("agency_id", agencyId);
+    return {
+      connected: alreadyRegistered,
+      needsPin: !alreadyRegistered,
+      phoneNumber: phone.display_phone_number ?? null,
+      displayName: phone.verified_name ?? null,
+    };
+  });
+
+
+export const registerWhatsAppPhoneNumber = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ pin: z.string().regex(/^\\d{6}$/) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { agencyId } = await requireAgencyAdmin(context.supabase, context.userId);
+    const config = requiredMetaConfig();
+    const admin = adminClient();
+    const { data: connection, error: loadError } = await admin
+      .from("whatsapp_configs")
+      .select("phone_number_id, access_token_encrypted, connection_status, registration_attempts")
+      .eq("agency_id", agencyId)
+      .maybeSingle();
+    if (loadError || !connection?.phone_number_id || !connection.access_token_encrypted) {
+      throw new Error("Connect the WhatsApp business account through Meta before registering its phone number.");
+    }
+    if (connection.connection_status === "connected") return { connected: true };
+    const attempts = connection.registration_attempts ?? 0;
+    if (attempts >= 5) throw new Error("Too many PIN attempts. Reconnect through Meta or contact the platform operator.");
+    const { error: attemptError } = await admin.from("whatsapp_configs")
+      .update({ registration_attempts: attempts + 1 })
+      .eq("agency_id", agencyId);
+    if (attemptError) throw new Error("Could not record the registration attempt.");
+    const token = await decryptAccessToken(connection.access_token_encrypted, config.encryptionKey);
+    const proof = await hmacHex(config.appSecret, token);
+    const registerUrl = new URL("https://graph.facebook.com/" + config.graphApiVersion + "/" + connection.phone_number_id + "/register");
+    registerUrl.searchParams.set("appsecret_proof", proof);
+    try {
+      const result = await metaJson(registerUrl, token, "POST", { messaging_product: "whatsapp", pin: data.pin });
+      if (result.success !== true && result.success !== "true") throw new Error("Meta did not confirm phone registration.");
+    } catch {
+      await admin.from("whatsapp_configs").update({
+        connection_error: "Phone registration failed. Verify the six-digit PIN and try again.",
+      }).eq("agency_id", agencyId);
+      throw new Error("Phone registration failed. Verify the six-digit PIN and try again.");
+    }
+    const now = new Date().toISOString();
+    const { error: updateError } = await admin.from("whatsapp_configs").update({
+      connection_status: "connected",
+      connection_error: null,
+      connected_at: now,
+      last_connected_at: now,
+      registration_attempts: 0,
+      ai_enabled: false,
+    }).eq("agency_id", agencyId);
+    if (updateError) throw new Error("Meta registered the phone, but the local connection state could not be saved. Contact support.");
+    return { connected: true };
   });

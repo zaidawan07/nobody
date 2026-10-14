@@ -9,7 +9,8 @@ ALTER TABLE public.whatsapp_configs
   ADD COLUMN IF NOT EXISTS access_token_expires_at timestamptz,
   ADD COLUMN IF NOT EXISTS connected_at timestamptz,
   ADD COLUMN IF NOT EXISTS connected_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS webhook_subscribed_at timestamptz;
+  ADD COLUMN IF NOT EXISTS webhook_subscribed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS registration_attempts integer NOT NULL DEFAULT 0 CHECK (registration_attempts >= 0);
 
 CREATE UNIQUE INDEX IF NOT EXISTS whatsapp_configs_phone_number_id_uidx
   ON public.whatsapp_configs (phone_number_id)

@@ -11,6 +11,13 @@ type VisitStatus = Database["public"]["Enums"]["visit_status"];
 type VisitRow = Database["public"]["Tables"]["site_visits"]["Row"];
 const statuses: VisitStatus[] = ["requested", "confirmed", "completed", "cancelled", "no_show"];
 
+function toLocalDateTimeInput(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 export const Route = createFileRoute("/visits")({
   ssr: false,
   beforeLoad: async () => {
@@ -89,7 +96,7 @@ function VisitsPage() {
 
   function startEditing(visit: VisitRow) {
     setEditingId(visit.id);
-    setScheduled(visit.scheduled_at ? new Date(visit.scheduled_at).toISOString().slice(0, 16) : "");
+    setScheduled(toLocalDateTimeInput(visit.scheduled_at));
     setNotes(visit.notes ?? "");
     setPropertyId(visit.property_id ?? "");
     setLeadId(visit.lead_id ?? "");

@@ -22,7 +22,7 @@ $$;
 -- account status, IDs, or timestamps through direct PostgREST updates. The row
 -- policies still decide WHICH profile can be updated; these grants decide WHICH
 -- fields authenticated clients may change.
-REVOKE UPDATE ON TABLE public.profiles FROM authenticated;
+REVOKE UPDATE ON TABLE public.profiles FROM PUBLIC, authenticated;
 GRANT UPDATE (full_name, phone, job_title)
   ON TABLE public.profiles TO authenticated;
 

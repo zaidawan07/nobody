@@ -11,7 +11,8 @@
     "lint": "eslint src",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "secrets:check": "bun run scripts/check-secrets.ts"
   },
   "overrides": {
     "rolldown": "1.2.1"

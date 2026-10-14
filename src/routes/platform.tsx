@@ -1,0 +1,33 @@
+import { useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { Building2, Plus } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
+import { supabase } from "@/integrations/supabase/client";
+import { useAccess } from "@/hooks/useAccess";
+import { provisionAgency, setAgencyStatus } from "@/lib/provisioning.functions";
+
+export const Route = createFileRoute("/platform")({ ssr:false, beforeLoad:async()=>{const {data,error}=await supabase.auth.getUser();if(error||!data.user)throw redirect({to:"/auth"});}, head:()=>({meta:[{title:"Platform agencies — EstateOS"}]}), component:PlatformPage });
+function PlatformPage(){
+  const access=useAccess(), client=useQueryClient(), createAgency=useServerFn(provisionAgency), changeStatus=useServerFn(setAgencyStatus);
+  const [show,setShow]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const [agencyName,setAgencyName]=useState(""),[city,setCity]=useState(""),[phone,setPhone]=useState(""),[adminName,setAdminName]=useState(""),[adminEmail,setAdminEmail]=useState(""),[adminPassword,setAdminPassword]=useState("");
+  const list=useQuery({queryKey:["platform-agencies"],queryFn:async()=>{const {data,error}=await supabase.from("agencies").select("*").order("created_at",{ascending:false});if(error)throw error;return data;},enabled:access.data?.role==="super_admin"});
+  async function add(e:FormEvent<HTMLFormElement>){e.preventDefault();setError("");setBusy(true);try{await createAgency({data:{agencyName,city,phone,adminName,adminEmail,adminPassword}});setShow(false);setAgencyName("");setCity("");setPhone("");setAdminName("");setAdminEmail("");setAdminPassword("");await client.invalidateQueries({queryKey:["platform-agencies"]});}catch(e){setError(e instanceof Error?e.message:"Could not create agency.");}finally{setBusy(false);}}
+  async function toggle(id:string,status:"active"|"suspended"){try{await changeStatus({data:{agencyId:id,status}});await client.invalidateQueries({queryKey:["platform-agencies"]});}catch(e){setError(e instanceof Error?e.message:"Could not update agency.");}}
+  if(access.data&&access.data.role!=="super_admin")return <AppShell title="Platform agencies"><p role="alert" className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">Only the platform owner can manage agencies.</p></AppShell>;
+  return <AppShell title="Platform agencies" description="Provision isolated agency workspaces and their first administrator." actions={<button onClick={()=>setShow(!show)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"><Plus className="size-4"/>{show?"Cancel":"Create agency"}</button>}>
+    {show?<form onSubmit={add} className="surface-panel mb-6 grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+      <label className="space-y-1.5 text-sm font-medium">Agency name *<input required minLength={2} value={agencyName} onChange={e=>setAgencyName(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"/></label>
+      <label className="space-y-1.5 text-sm font-medium">City<input value={city} onChange={e=>setCity(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal" placeholder="Lahore"/></label>
+      <label className="space-y-1.5 text-sm font-medium">Phone<input value={phone} onChange={e=>setPhone(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"/></label>
+      <label className="space-y-1.5 text-sm font-medium">First admin name *<input required minLength={2} value={adminName} onChange={e=>setAdminName(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"/></label>
+      <label className="space-y-1.5 text-sm font-medium">Admin email *<input required type="email" value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"/></label>
+      <label className="space-y-1.5 text-sm font-medium">Temporary password *<input required minLength={8} type="password" autoComplete="new-password" value={adminPassword} onChange={e=>setAdminPassword(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"/></label>
+      {error?<p role="alert" className="text-sm text-destructive md:col-span-2">{error}</p>:null}<div className="self-end"><button disabled={busy} className="h-10 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{busy?"Creating…":"Create agency + admin"}</button></div>
+    </form>:null}
+    {error&&!show?<p role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>:null}
+    <div className="surface-panel overflow-hidden">{list.isLoading?<p className="p-8 text-center text-sm text-muted-foreground">Loading agencies…</p>:list.isError?<p role="alert" className="p-8 text-center text-sm text-destructive">Could not load agencies. Verify platform-owner access.</p>:(list.data??[]).length===0?<div className="p-10 text-center"><Building2 className="mx-auto size-8 text-muted-foreground"/><h3 className="mt-3 font-semibold">No agencies yet</h3><p className="mt-1 text-sm text-muted-foreground">Create the first agency and administrator.</p></div>:<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Agency</th><th className="px-4 py-3">Cities</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Action</th></tr></thead><tbody className="divide-y divide-border">{(list.data??[]).map(a=><tr key={a.id}><td className="px-4 py-4 font-medium">{a.name}</td><td className="px-4 py-4">{a.cities_served.join(", ")||"—"}</td><td className="px-4 py-4 capitalize">{a.status}</td><td className="px-4 py-4 text-xs text-muted-foreground">{new Date(a.created_at).toLocaleDateString()}</td><td className="px-4 py-4"><button onClick={()=>toggle(a.id,a.status==="active"?"suspended":"active")} className="rounded-md border border-border px-3 py-2 text-xs font-medium">{a.status==="active"?"Suspend":"Reactivate"}</button></td></tr>)}</tbody></table></div>}</div>
+  </AppShell>;
+}

@@ -65,6 +65,14 @@ export const claimSuperAdmin = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("user_roles")
       .insert({ user_id: context.userId, role: "super_admin" });
-    if (error) throw new Error(error.message);
+    if (error) {
+      // The database's partial unique index is the final concurrency guard:
+      // two first-time claims can race past the count check, but only one insert
+      // can succeed. Translate that expected race into a safe, actionable error.
+      if (error.code === "23505") {
+        throw new Error("A platform owner was claimed by another account. Only one platform owner is allowed.");
+      }
+      throw new Error(error.message);
+    }
     return { ok: true };
   });

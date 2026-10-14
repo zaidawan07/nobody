@@ -98,7 +98,7 @@ async function decryptAccessToken(encryptedValue: string, keyBase64: string) {
   const rawKey = decodeBase64(keyBase64);
   if (rawKey.length !== 32) throw new Error("META_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes.");
   const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
-  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: decodeBase64(parts[1]) }, key, decodeBase64(parts[2]));
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: decodeBase64(parts[1] ?? "") }, key, decodeBase64(parts[2] ?? ""));
   return new TextDecoder().decode(plaintext);
 }
 
@@ -199,7 +199,7 @@ export const completeWhatsAppEmbeddedSignup = createServerFn({ method: "POST" })
     numbersUrl.searchParams.set("fields", "id,display_phone_number,verified_name,status");
     numbersUrl.searchParams.set("appsecret_proof", proof);
     const numberResult = await metaJson(numbersUrl, accessToken);
-    const numbers = Array.isArray(numberResult["data"]) ? numberResult["data"] as Array<{ id?: string; display_phone_number?: string; verified_name?: string }> : [];
+    const numbers = Array.isArray(numberResult["data"]) ? numberResult["data"] as Array<{ id?: string; display_phone_number?: string; verified_name?: string; status?: string }> : [];
     const phone = numbers.find((item) => item.id === data.phoneNumberId);
     if (!phone) throw new Error("The selected phone number could not be verified under the authorized WhatsApp Business Account.");
 
@@ -279,7 +279,7 @@ export const registerWhatsAppPhoneNumber = createServerFn({ method: "POST" })
     registerUrl.searchParams.set("appsecret_proof", proof);
     try {
       const result = await metaJson(registerUrl, token, "POST", { messaging_product: "whatsapp", pin: data.pin });
-      if (result.success !== true && result.success !== "true") throw new Error("Meta did not confirm phone registration.");
+      if (result["success"] !== true && result["success"] !== "true") throw new Error("Meta did not confirm phone registration.");
     } catch {
       await admin.from("whatsapp_configs").update({
         connection_error: "Phone registration failed. Verify the six-digit PIN and try again.",

@@ -13,11 +13,7 @@ ALTER TABLE public.whatsapp_configs
   ADD CONSTRAINT whatsapp_configs_handoff_keywords_count_check
     CHECK (cardinality(handoff_keywords) <= 20),
   ADD CONSTRAINT whatsapp_configs_handoff_keywords_length_check
-    CHECK (NOT EXISTS (
-      SELECT 1
-      FROM unnest(handoff_keywords) AS keyword
-      WHERE char_length(keyword) > 80
-    ));
+    CHECK (char_length(array_to_string(handoff_keywords, '')) <= 1600);
 
 CREATE INDEX IF NOT EXISTS conversation_messages_ai_usage_idx
   ON public.conversation_messages (agency_id, created_at)

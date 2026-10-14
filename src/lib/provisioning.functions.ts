@@ -164,3 +164,65 @@ export const setAgencyStatus = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+
+/** Agency admin: suspend/reactivate a teammate without changing their assigned role. */
+export const setTeamMemberStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ userId: z.string().uuid(), status: z.enum(["active", "suspended"]) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertRole(context.supabase as never, context.userId, "agency_admin");
+    if (data.userId === context.userId) {
+      throw new Error("You cannot suspend your own account from the team screen.");
+    }
+
+    const { data: actor, error: actorError } = await context.supabase
+      .from("profiles")
+      .select("agency_id")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (actorError || !actor?.agency_id) {
+      throw new Error("Your account is not linked to an agency.");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: target, error: targetError } = await supabaseAdmin
+      .from("profiles")
+      .select("id,agency_id,status")
+      .eq("id", data.userId)
+      .maybeSingle();
+    if (targetError || !target || target.agency_id !== actor.agency_id) {
+      throw new Error("That teammate does not belong to your agency.");
+    }
+
+    if (data.status === "suspended") {
+      const { data: roleRows, error: rolesError } = await supabaseAdmin
+        .from("user_roles")
+        .select("user_id")
+        .eq("agency_id", actor.agency_id)
+        .eq("role", "agency_admin");
+      if (rolesError) throw new Error("Unable to verify agency administrator coverage.");
+      const otherAdminIds = (roleRows ?? [])
+        .map((row) => row.user_id)
+        .filter((id) => id !== data.userId && id !== context.userId);
+      const { data: activeAdmins, error: activeAdminsError } = otherAdminIds.length
+        ? await supabaseAdmin.from("profiles").select("id").in("id", otherAdminIds).eq("agency_id", actor.agency_id).eq("status", "active")
+        : { data: [], error: null };
+      if (activeAdminsError) throw new Error("Unable to verify agency administrator coverage.");
+      const targetIsAdmin = (roleRows ?? []).some((row) => row.user_id === data.userId);
+      const otherActiveAdminExists = (activeAdmins ?? []).length > 0 || actor.status === "active";
+      if (targetIsAdmin && !otherActiveAdminExists) {
+        throw new Error("Keep at least one other active agency administrator before suspending this account.");
+      }
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("profiles")
+      .update({ status: data.status })
+      .eq("id", data.userId)
+      .eq("agency_id", actor.agency_id);
+    if (updateError) throw new Error("Could not update teammate status.");
+    return { ok: true };
+  });

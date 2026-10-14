@@ -273,3 +273,60 @@ export const updateAgencySettings = createServerFn({ method: "POST" })
     if (error || !updated) throw new Error("Could not update agency settings. Verify that the agency is active.");
     return { ok: true };
   });
+
+
+const subscriptionPlanSchema = z.object({
+  planId: z.string().uuid(),
+  monthlyPricePkr: z.number().min(0).nullable(),
+  annualPricePkr: z.number().min(0).nullable(),
+  maxProperties: z.number().int().min(0).nullable(),
+  maxLeads: z.number().int().min(0).nullable(),
+  maxTeamMembers: z.number().int().min(1).nullable(),
+  maxAiRepliesPerDay: z.number().int().min(0),
+  isActive: z.boolean(),
+});
+
+/** Platform owner: configure a plan's price and usage limits. */
+export const updateSubscriptionPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => subscriptionPlanSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertRole(context.supabase as never, context.userId, "super_admin");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: existing, error: lookupError } = await supabaseAdmin
+      .from("subscription_plans").select("id,code").eq("id", data.planId).maybeSingle();
+    if (lookupError || !existing) throw new Error("Subscription plan was not found.");
+    if (existing.code === "starter" && !data.isActive) {
+      throw new Error("The Starter plan must remain active as the default for new agencies.");
+    }
+    const { error } = await supabaseAdmin.from("subscription_plans").update({
+      monthly_price_pkr: data.monthlyPricePkr,
+      annual_price_pkr: data.annualPricePkr,
+      max_properties: data.maxProperties,
+      max_leads: data.maxLeads,
+      max_team_members: data.maxTeamMembers,
+      max_ai_replies_per_day: data.maxAiRepliesPerDay,
+      is_active: data.isActive,
+    }).eq("id", data.planId);
+    if (error) throw new Error("Could not update subscription plan settings.");
+    return { ok: true };
+  });
+
+/** Platform owner: resolve a plan request atomically in the database. */
+export const resolveSubscriptionRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({
+    requestId: z.string().uuid(),
+    decision: z.enum(["approved", "rejected"]),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertRole(context.supabase as never, context.userId, "super_admin");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.rpc("resolve_subscription_change_request", {
+      _request_id: data.requestId,
+      _decision: data.decision,
+      _actor_id: context.userId,
+    });
+    if (error) throw new Error(error.message.includes("already resolved") ? "This request has already been resolved." : "Could not resolve the subscription request.");
+    return { ok: true };
+  });

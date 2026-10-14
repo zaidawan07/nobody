@@ -38,6 +38,10 @@ BEGIN
   INSERT INTO public.conversation_messages (agency_id, conversation_id, sender, body)
   VALUES (v_agency_id, v_conversation_id, 'customer', 'private test message must not be copied into activity metadata');
 
+  IF (SELECT unread_count FROM public.conversations WHERE id = v_conversation_id) <> 1 THEN
+    RAISE EXCEPTION 'Incoming customer message did not increment unread_count';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM public.lead_activities
     WHERE agency_id = v_agency_id AND lead_id = v_lead_id AND activity_type = 'created'

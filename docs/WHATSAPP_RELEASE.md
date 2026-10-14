@@ -22,7 +22,7 @@ Set the same worker-required values in **Supabase Edge Function secrets**:
 - `META_GRAPH_API_VERSION`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (optional; defaults to `gpt-4o-mini`)
-- `AI_MAX_REPLIES_PER_AGENCY_PER_DAY` (optional; defaults to `500`)
+- `AI_MAX_REPLIES_PER_AGENCY_PER_DAY` (optional; defaults to `2000`
 - `AI_MAX_REPLIES_PER_CONVERSATION_PER_HOUR` (optional; defaults to `20`)
 
 Set `META_APP_ID` and `META_EMBEDDED_SIGNUP_CONFIG_ID` in app hosting. The webhook verify token is used by the webhook function; the app secret verifies `X-Hub-Signature-256`. Use a base64-encoded 32-byte random key for `META_TOKEN_ENCRYPTION_KEY`; do not use a human password.

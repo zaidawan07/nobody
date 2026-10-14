@@ -216,53 +216,6 @@ export type Database = {
         Relationships: []
       }
 
-        Row: {
-          agency_id: string
-          assigned_to: string | null
-          created_at: string
-          created_by: string
-          description: string | null
-          due_at: string | null
-          id: string
-          lead_id: string | null
-          priority: string
-          property_id: string | null
-          status: string
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          agency_id: string
-          assigned_to?: string | null
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          due_at?: string | null
-          id?: string
-          lead_id?: string | null
-          priority?: string
-          property_id?: string | null
-          status?: string
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          agency_id?: string
-          assigned_to?: string | null
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          due_at?: string | null
-          id?: string
-          lead_id?: string | null
-          priority?: string
-          property_id?: string | null
-          status?: string
-          title?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       agencies: {
         Row: {
           cities_served: string[]

@@ -47,6 +47,7 @@ describe("database security migrations", () => {
     "../supabase/migrations/20261014200000_agency_tasks.sql",
     "../supabase/migrations/20261014210000_ai_reply_safeguards.sql",
     "../supabase/migrations/20261014220000_subscriptions_and_limits.sql",
+    "../supabase/migrations/20261014230000_lead_activity_timeline.sql",
   ];
 
   it("uses balanced dollar-quoted SQL blocks in every migration", () => {
@@ -243,5 +244,24 @@ describe("subscription request route wiring", () => {
     expect(server).toContain("That subscription plan is unavailable.");
     const migration = readFileSync(new URL("../supabase/migrations/20261014220000_subscriptions_and_limits.sql", import.meta.url), "utf8");
     expect(migration).toContain("subscription_change_requests_one_open_per_agency_idx");
+  });
+});
+
+
+describe("lead activity timeline isolation", () => {
+  it("keeps lead history tenant-scoped and read-only to browser clients", () => {
+    const sql = readFileSync(
+      new URL("../supabase/migrations/20261014230000_lead_activity_timeline.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("lead_activities_same_agency_lead_fk");
+    expect(sql).toContain("USING (agency_id = public.current_agency_id())");
+    expect(sql).toContain("REVOKE ALL ON public.lead_activities FROM PUBLIC, anon, authenticated");
+    expect(sql).toContain("GRANT SELECT ON public.lead_activities TO authenticated");
+    expect(sql).toContain("leads_record_activity_after_insert");
+    expect(sql).toContain("leads_record_activity_after_update");
+    expect(sql).toContain("status_changed");
+    expect(sql).toContain("assignment_changed");
+    expect(sql).toContain("details_updated");
   });
 });

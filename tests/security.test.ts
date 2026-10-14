@@ -34,7 +34,7 @@ describe("constantTimeSecretMatch", () => {
 });
 
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 describe("database security migrations", () => {
   const migrationFiles = [
@@ -43,6 +43,7 @@ describe("database security migrations", () => {
     "../supabase/migrations/20261014170000_whatsapp_cloud_api.sql",
     "../supabase/migrations/20261014183000_tenant_relationships_and_rls.sql",
     "../supabase/migrations/20261014190000_webhook_worker_recovery.sql",
+    "../supabase/migrations/20261014193000_property_photo_storage.sql",
     "../supabase/migrations/20261014200000_agency_tasks.sql",
     "../supabase/migrations/20261014210000_ai_reply_safeguards.sql",
     "../supabase/migrations/20261014220000_subscriptions_and_limits.sql",
@@ -172,5 +173,71 @@ describe("subscription and quota enforcement", () => {
     expect(sql).toContain("subscription_change_requests_one_open_per_agency_idx");
     expect(sql).toContain("resolve_subscription_change_request");
     expect(sql).toContain("agency_subscriptions_plan_status_idx");
+  });
+});
+
+
+import { isHandoffRequest, isOptOutRequest } from "../supabase/functions/_shared/whatsapp-safety";
+
+describe("WhatsApp consent and handoff rules", () => {
+  it("recognizes common opt-out commands case-insensitively and with punctuation", () => {
+    expect(isOptOutRequest(" STOP!!! ")).toBe(true);
+    expect(isOptOutRequest("unsubscribe")).toBe(true);
+    expect(isOptOutRequest("Please stop messaging me.")).toBe(true);
+    expect(isOptOutRequest("بند کریں")).toBe(true);
+  });
+
+  it("does not treat unrelated customer messages as opt-outs", () => {
+    expect(isOptOutRequest("Please stop by our office tomorrow")).toBe(false);
+    expect(isOptOutRequest("I want to see the house")).toBe(false);
+  });
+
+  it("routes default and agency-configured handoff phrases to a human", () => {
+    expect(isHandoffRequest("I would like a real person please", [])).toBe(true);
+    expect(isHandoffRequest("please call me", null)).toBe(true);
+    expect(isHandoffRequest("can someone ring me later", ["ring me"])).toBe(true);
+  });
+
+  it("ignores blank or one-character configured handoff keywords", () => {
+    expect(isHandoffRequest("a", ["", "a", " "])).toBe(false);
+  });
+});
+
+describe("repository secret-file hygiene", () => {
+  it("does not track the root environment file and ignores local environment files", () => {
+    expect(existsSync(new URL("../env", import.meta.url))).toBe(false);
+    const ignore = readFileSync(new URL("../.gitignore", import.meta.url), "utf8");
+    expect(ignore).toContain(".env*");
+    expect(ignore).toContain("!.env.example");
+    expect(ignore).toContain("/env");
+  });
+
+  it("keeps server credentials blank in the committed environment template", () => {
+    const template = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+    for (const key of [
+      "SUPABASE_URL",
+      "SUPABASE_PUBLISHABLE_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "PLATFORM_BOOTSTRAP_SECRET",
+      "META_APP_ID",
+      "META_APP_SECRET",
+      "META_EMBEDDED_SIGNUP_CONFIG_ID",
+      "META_TOKEN_ENCRYPTION_KEY",
+      "META_WEBHOOK_VERIFY_TOKEN",
+      "OPENAI_API_KEY",
+    ]) {
+      expect(template).toMatch(new RegExp("^" + key + "=$", "m"));
+    }
+  });
+});
+
+describe("subscription request route wiring", () => {
+  it("routes agency requests through a validated server function", () => {
+    const route = readFileSync(new URL("../src/routes/billing.tsx", import.meta.url), "utf8");
+    const server = readFileSync(new URL("../src/lib/provisioning.functions.ts", import.meta.url), "utf8");
+    expect(route).toContain("requestSubscriptionChange");
+    expect(route).toContain("submitPlanRequest({ data: { planId, note: note.trim() } })");
+    expect(server).toContain("subscriptionRequestSchema");
+    expect(server).toContain("subscription_change_requests_one_open_per_agency_idx");
   });
 });

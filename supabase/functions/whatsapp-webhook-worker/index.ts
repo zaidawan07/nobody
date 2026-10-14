@@ -45,7 +45,7 @@ async function findOrCreateConversation(admin: AdminClient, event: WebhookEvent,
     .maybeSingle();
   if (findError) throw new Error("Could not look up the customer conversation.");
   if (existing) {
-    const update: Record<string, unknown> = { last_message_at: timestamp };
+    const update: Record<string, unknown> = { last_message_at: timestamp, last_customer_message_at: timestamp };
     if (name) update.customer_name = name;
     const { error } = await admin.from("conversations").update(update).eq("id", existing.id);
     if (error) throw new Error("Could not update the customer conversation.");
@@ -57,6 +57,7 @@ async function findOrCreateConversation(admin: AdminClient, event: WebhookEvent,
     customer_name: name,
     state: "ai_active",
     last_message_at: timestamp,
+    last_customer_message_at: timestamp,
   }).select("id,state,handoff_requested").single();
   if (!createError && created) return created;
   if (createError?.code === "23505") {
@@ -86,16 +87,23 @@ async function processEvent(admin: AdminClient, event: WebhookEvent) {
         const contactName = typeof contact?.profile?.name === "string" ? contact.profile.name.slice(0, 200) : null;
         const conversation = await findOrCreateConversation(admin, event, from, contactName, timestamp);
         const kind = typeof message.type === "string" ? message.type : "unknown";
+        const body = messageBody(message);
         const { error } = await admin.from("conversation_messages").upsert({
           agency_id: event.agency_id,
           conversation_id: conversation.id,
           sender: "customer",
-          body: messageBody(message),
+          body,
           provider_message_id: providerMessageId,
           provider_status: "received",
           created_at: timestamp,
         }, { onConflict: "provider_message_id", ignoreDuplicates: true });
         if (error) throw new Error("Could not persist an incoming WhatsApp message.");
+        const normalizedBody = body?.trim().toLocaleUpperCase();
+        const optOutKeywords = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REMOVE", "بند", "روکیں"]);
+        if (normalizedBody && optOutKeywords.has(normalizedBody)) {
+          const { error: optOutError } = await admin.from("conversations").update({ opted_out_at: timestamp, opt_out_reason: body.slice(0, 200), state: "closed", handoff_requested: false }).eq("id", conversation.id).eq("agency_id", event.agency_id);
+          if (optOutError) throw new Error("Could not persist the customer opt-out request.");
+        }
         // Do not reset state here: human takeover must survive subsequent customer replies.
         if (kind === "unknown") console.info("Stored WhatsApp message with an unsupported message type.");
       }

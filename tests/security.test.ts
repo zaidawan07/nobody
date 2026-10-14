@@ -45,6 +45,7 @@ describe("database security migrations", () => {
     "../supabase/migrations/20261014190000_webhook_worker_recovery.sql",
     "../supabase/migrations/20261014200000_agency_tasks.sql",
     "../supabase/migrations/20261014210000_ai_reply_safeguards.sql",
+    "../supabase/migrations/20261014220000_subscriptions_and_limits.sql",
   ];
 
   it("uses balanced dollar-quoted SQL blocks in every migration", () => {
@@ -155,5 +156,21 @@ describe("WhatsApp AI reply safety", () => {
     expect(worker).toContain("24 * 60 * 60 * 1000");
     expect(worker).toContain("biz_opaque_callback_data");
     expect(worker).toContain("deterministicRequestId");
+  });
+});
+
+
+describe("subscription and quota enforcement", () => {
+  it("creates default subscriptions and enforces database-side limits", () => {
+    const sql = readFileSync(
+      new URL("../supabase/migrations/20261014220000_subscriptions_and_limits.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("set_default_agency_subscription");
+    expect(sql).toContain("enforce_agency_plan_limit");
+    expect(sql).toContain("PLAN_LIMIT_EXCEEDED");
+    expect(sql).toContain("subscription_change_requests_one_open_per_agency_idx");
+    expect(sql).toContain("resolve_subscription_change_request");
+    expect(sql).toContain("agency_subscriptions_plan_status_idx");
   });
 });

@@ -30,6 +30,19 @@ async function verifySignature(rawBody: string, signature: string, appSecret: st
   return constantTimeEqual(expected, signature);
 }
 
+
+function createSupabaseFetch(apiKey: string): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(input instanceof Request ? input.headers : undefined);
+    new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
+    if (apiKey.startsWith("sb_secret_") && headers.get("Authorization") === "Bearer " + apiKey) {
+      headers.delete("Authorization");
+    }
+    headers.set("apikey", apiKey);
+    return fetch(input, { ...init, headers });
+  };
+}
+
 function textResponse(body: string, status = 200) {
   return new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 }
@@ -86,6 +99,7 @@ Deno.serve(async (request) => {
   if (phoneNumberIds.size === 0) return textResponse("EVENT_RECEIVED");
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
+    global: { fetch: createSupabaseFetch(serviceRoleKey) },
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const bodyHash = await sha256Hex(rawBody);

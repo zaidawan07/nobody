@@ -432,6 +432,17 @@ export const setWhatsAppAiEnabled = createServerFn({ method: "POST" })
       }
       const meta = requiredMetaConfig();
       const admin = adminClient();
+      const { data: subscription, error: subscriptionError } = await admin
+        .from("agency_subscriptions")
+        .select("status,current_period_end,plan:subscription_plans(max_ai_replies_per_day,is_active)")
+        .eq("agency_id", agencyId)
+        .maybeSingle();
+      const plan = subscription?.plan as { max_ai_replies_per_day?: number; is_active?: boolean } | null;
+      if (subscriptionError || !subscription || !["active", "trialing"].includes(subscription.status) ||
+          (subscription.current_period_end && new Date(subscription.current_period_end).getTime() <= Date.now()) ||
+          !plan?.is_active || !plan.max_ai_replies_per_day) {
+        throw new Error("AI replies are not included in the active plan. Request a Growth or Pro plan first.");
+      }
       const { data: connection, error } = await admin
         .from("whatsapp_configs")
         .select("connection_status,phone_number_id,access_token_encrypted,access_token_expires_at")

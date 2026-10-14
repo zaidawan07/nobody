@@ -105,7 +105,7 @@ export const addTeamMember = createServerFn({ method: "POST" })
 
     const { data: me, error: meError } = await context.supabase
       .from("profiles")
-      .select("agency_id,status")
+      .select("agency_id")
       .eq("id", context.userId)
       .maybeSingle();
     if (meError) throw new Error(meError.message);
@@ -180,7 +180,7 @@ export const setTeamMemberStatus = createServerFn({ method: "POST" })
 
     const { data: actor, error: actorError } = await context.supabase
       .from("profiles")
-      .select("agency_id")
+      .select("agency_id,status")
       .eq("id", context.userId)
       .maybeSingle();
     if (actorError || !actor?.agency_id) {

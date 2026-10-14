@@ -112,6 +112,15 @@ BEGIN
   IF v_agency_id IS NULL THEN
     RETURN NEW;
   END IF;
+  IF TG_TABLE_NAME = 'profiles' THEN
+    IF TG_OP = 'UPDATE' AND NEW.agency_id IS NOT DISTINCT FROM OLD.agency_id AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
+      RETURN NEW;
+    END IF;
+    IF NEW.status = 'suspended' THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_agency_id::text, 0));
 
   SELECT s.plan_id INTO v_plan_id
   FROM public.agency_subscriptions s
@@ -157,7 +166,7 @@ CREATE TRIGGER enforce_lead_plan_limit
   FOR EACH ROW EXECUTE FUNCTION public.enforce_agency_plan_limit();
 DROP TRIGGER IF EXISTS enforce_profile_plan_limit ON public.profiles;
 CREATE TRIGGER enforce_profile_plan_limit
-  BEFORE INSERT ON public.profiles
+  BEFORE INSERT OR UPDATE OF agency_id, status ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.enforce_agency_plan_limit();
 
 ALTER TABLE public.subscription_plans ENABLE ROW LEVEL SECURITY;
@@ -179,7 +188,7 @@ CREATE POLICY "authenticated users read active subscription plans" ON public.sub
 CREATE POLICY "agency members read own subscription" ON public.agency_subscriptions
   FOR SELECT TO authenticated USING (agency_id = public.current_agency_id() OR public.is_super_admin());
 CREATE POLICY "agency admins read own subscription requests" ON public.subscription_change_requests
-  FOR SELECT TO authenticated USING (agency_id = public.current_agency_id() OR public.is_super_admin());
+  FOR SELECT TO authenticated USING (public.is_agency_admin(agency_id) OR public.is_super_admin());
 CREATE POLICY "agency admins request subscription changes" ON public.subscription_change_requests
   FOR INSERT TO authenticated WITH CHECK (
     agency_id = public.current_agency_id()

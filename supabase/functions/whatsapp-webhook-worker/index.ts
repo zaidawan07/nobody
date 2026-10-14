@@ -115,12 +115,12 @@ async function deterministicRequestId(value: string): Promise<string> {
 
 function isOptOutRequest(body: string): boolean {
   const normalized = body.trim().toLocaleUpperCase().replace(/[.!?,;]+$/g, "").trim();
+  const exactCommands = new Set(["STOP", "STOP ALL", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REMOVE", "OPT OUT", "OPT-OUT", "روکیں", "بند کریں"]);
   const phrases = [
-    "STOP", "STOP ALL", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REMOVE",
-    "OPT OUT", "OPT-OUT", "PLEASE STOP", "STOP MESSAGING", "DO NOT MESSAGE", "DON'T MESSAGE",
-    "روکیں", "بند کریں", "مزید پیغام نہ بھیجیں",
+    "PLEASE STOP", "STOP MESSAGING", "DO NOT MESSAGE", "DON'T MESSAGE",
+    "UNSUBSCRIBE ME", "REMOVE ME", "مزید پیغام نہ بھیجیں",
   ];
-  return phrases.some((phrase) => normalized === phrase || normalized.startsWith(phrase + " "));
+  return exactCommands.has(normalized) || phrases.some((phrase) => normalized.startsWith(phrase + " ") || normalized === phrase);
 }
 
 function isHandoffRequest(body: string, configuredKeywords: string[] | null | undefined): boolean {

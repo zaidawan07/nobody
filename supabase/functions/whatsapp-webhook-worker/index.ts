@@ -119,6 +119,8 @@ async function maybeCreateLead(
     .select("id")
     .eq("agency_id", event.agency_id)
     .eq("whatsapp_number", phone)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (lookupError) throw new Error("Could not check for an existing WhatsApp lead.");
   let leadId = existing?.id as string | undefined;
@@ -137,6 +139,8 @@ async function maybeCreateLead(
         .select("id")
         .eq("agency_id", event.agency_id)
         .eq("whatsapp_number", phone)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (!raced?.id) throw new Error("Could not create a lead from the WhatsApp enquiry.");
       leadId = raced.id;
@@ -225,7 +229,7 @@ async function generateAiReply(
 async function maybeSendAiReply(
   admin: AdminClient,
   event: WebhookEvent,
-  conversation: { id: string; state: string; handoff_requested: boolean; opted_out_at?: string | null },
+  conversation: { id: string; customer_phone: string; state: string; handoff_requested: boolean; opted_out_at?: string | null },
   config: WhatsAppConfig,
   inboundMessageId: string,
   inboundTimestamp: string,
@@ -331,7 +335,7 @@ async function maybeSendAiReply(
       body: JSON.stringify({
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to: (await admin.from("conversations").select("customer_phone").eq("id", conversation.id).eq("agency_id", event.agency_id).single()).data?.customer_phone,
+        to: conversation.customer_phone,
         type: "text",
         text: { preview_url: false, body: reply },
         biz_opaque_callback_data: requestId,
@@ -366,7 +370,7 @@ async function maybeSendAiReply(
 async function findOrCreateConversation(admin: AdminClient, event: WebhookEvent, phone: string, name: string | null, timestamp: string) {
   const { data: existing, error: findError } = await admin
     .from("conversations")
-    .select("id,state,handoff_requested,lead_id,opted_out_at,last_customer_message_at,last_message_at")
+    .select("id,customer_phone,state,handoff_requested,lead_id,opted_out_at,last_customer_message_at,last_message_at")
     .eq("agency_id", event.agency_id)
     .eq("customer_phone", phone)
     .maybeSingle();
@@ -391,7 +395,7 @@ async function findOrCreateConversation(admin: AdminClient, event: WebhookEvent,
     state: "ai_active",
     last_message_at: timestamp,
     last_customer_message_at: timestamp,
-  }).select("id,state,handoff_requested,lead_id,opted_out_at,last_customer_message_at,last_message_at").single();
+  }).select("id,customer_phone,state,handoff_requested,lead_id,opted_out_at,last_customer_message_at,last_message_at").single();
   if (!createError && created) return { ...created, isNew: true };
   if (createError?.code === "23505") {
     const { data: raced, error: raceError } = await admin
@@ -445,10 +449,13 @@ async function processEvent(admin: AdminClient, event: WebhookEvent) {
           continue;
         }
 
-        const { data: config } = await admin.from("whatsapp_configs")
+        if (conversation.opted_out_at) continue;
+
+        const { data: config, error: configError } = await admin.from("whatsapp_configs")
           .select("ai_enabled,ai_greeting,ai_language,ai_tone,ai_instructions,handoff_keywords,auto_create_leads,phone_number_id,access_token_encrypted,access_token_expires_at")
           .eq("agency_id", event.agency_id)
           .maybeSingle();
+        if (configError) throw new Error("Could not load agency WhatsApp settings.");
         if (config?.auto_create_leads) {
           await maybeCreateLead(admin, event, conversation, from, contactName, body, true);
         }

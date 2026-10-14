@@ -98,6 +98,12 @@ GRANT UPDATE (
 ) ON TABLE public.whatsapp_configs TO authenticated;
 GRANT ALL ON TABLE public.whatsapp_configs TO service_role;
 
+-- Keep service-window and opt-out timestamps server-owned. Browser users may
+-- only switch takeover state; otherwise a client could reset the 24-hour window
+-- or clear an opt-out and bypass send-time policy checks.
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.conversations FROM PUBLIC, anon, authenticated;
+GRANT UPDATE (state, handoff_requested) ON TABLE public.conversations TO authenticated;
+
 -- Message records are written only by trusted server code after provider validation.
 REVOKE INSERT, UPDATE, DELETE ON TABLE public.conversation_messages FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.conversation_messages TO authenticated;

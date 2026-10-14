@@ -41,3 +41,6 @@ jobs:
 
       - name: TypeScript check
         run: bun run typecheck
+
+      - name: Unit tests
+        run: bun run test

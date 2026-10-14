@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { constantTimeSecretMatch, resolvePrimaryRole } from "@/lib/security";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export type AppRole = "super_admin" | "agency_admin" | "employee";
@@ -37,14 +38,7 @@ export const getMyAccess = createServerFn({ method: "GET" })
       .eq("role", "super_admin");
     if (countError) throw new Error("Unable to verify platform setup status.");
 
-    const roleRows = roles ?? [];
-    const role: AppRole | null = roleRows.some((r) => r.role === "super_admin")
-      ? "super_admin"
-      : roleRows.some((r) => r.role === "agency_admin")
-        ? "agency_admin"
-        : roleRows.some((r) => r.role === "employee")
-          ? "employee"
-          : null;
+    const role = resolvePrimaryRole(roles ?? []);
     const agency = profile?.agencies as { name?: string } | null;
 
     return {
@@ -57,19 +51,6 @@ export const getMyAccess = createServerFn({ method: "GET" })
       platformHasSuperAdmin: (count ?? 0) > 0,
     };
   });
-
-async function constantTimeSecretMatch(candidate: string, expected: string): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const [candidateHash, expectedHash] = await Promise.all([
-    crypto.subtle.digest("SHA-256", encoder.encode(candidate)),
-    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
-  ]);
-  const left = new Uint8Array(candidateHash);
-  const right = new Uint8Array(expectedHash);
-  let difference = 0;
-  for (let i = 0; i < left.length; i += 1) difference |= left[i] ^ right[i];
-  return difference === 0;
-}
 
 /**
  * Bootstrap: the very first account on a fresh platform can claim the

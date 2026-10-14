@@ -6,7 +6,7 @@ import { Bot, MessageCircle, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccess } from "@/hooks/useAccess";
-import { completeWhatsAppEmbeddedSignup, createWhatsAppConnectionSession, registerWhatsAppPhoneNumber } from "@/lib/whatsapp.functions";
+import { completeWhatsAppEmbeddedSignup, createWhatsAppConnectionSession, registerWhatsAppPhoneNumber, saveWhatsAppPreferences, setWhatsAppAiEnabled } from "@/lib/whatsapp.functions";
 
 type FacebookLoginResponse = { authResponse?: { code?: string } | null };
 type FacebookSdk = {
@@ -28,10 +28,13 @@ function WhatsAppSettings() {
   const startConnection = useServerFn(createWhatsAppConnectionSession);
   const finishConnection = useServerFn(completeWhatsAppEmbeddedSignup);
   const registerPhone = useServerFn(registerWhatsAppPhoneNumber);
+  const savePreferences = useServerFn(saveWhatsAppPreferences);
+  const changeAiState = useServerFn(setWhatsAppAiEnabled);
   const [greeting, setGreeting] = useState(""), [instructions, setInstructions] = useState(""), [language, setLanguage] = useState("auto"), [tone, setTone] = useState("friendly"), [autoLead, setAutoLead] = useState(true), [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const [sdkReady, setSdkReady] = useState(false), [connecting, setConnecting] = useState(false), [connectNotice, setConnectNotice] = useState("");
   const [registrationPin, setRegistrationPin] = useState(""), [registering, setRegistering] = useState(false);
   const [preparedSession, setPreparedSession] = useState<SignupSession | null>(null);
+  const [aiBusy, setAiBusy] = useState(false), [aiError, setAiError] = useState("");
   const [authCode, setAuthCode] = useState(""), [wabaId, setWabaId] = useState(""), [phoneNumberId, setPhoneNumberId] = useState("");
   const completionStarted = useRef(false);
 
@@ -113,7 +116,7 @@ function WhatsAppSettings() {
     setConnectNotice("Verifying the selected WhatsApp business and securely saving the connection…");
     void finishConnection({ data: { state: preparedSession.state, code: authCode, wabaId, phoneNumberId } })
       .then(async (result) => {
-        setConnectNotice(result.needsPin ? "Meta assets are linked. Enter the six-digit phone registration PIN below to finish setup." : "WhatsApp connected for " + (result.phoneNumber ?? "your agency") + ". AI remains off until the messaging safeguards are enabled.");
+        setConnectNotice(result.needsPin ? "Meta assets are linked. Enter the six-digit phone registration PIN below to finish setup." : "WhatsApp connected for " + (result.phoneNumber ?? "your agency") + ". AI stays off until you enable it after API setup.");
         await client.invalidateQueries({ queryKey: ["whatsapp-config"] });
       })
       .catch((error: unknown) => {
@@ -152,7 +155,7 @@ function WhatsAppSettings() {
     try {
       await registerPhone({ data: { pin: registrationPin } });
       setRegistrationPin("");
-      setConnectNotice("WhatsApp phone registration succeeded. AI remains disabled until outbound safeguards are deployed.");
+      setConnectNotice("WhatsApp phone registration succeeded. AI stays off until you enable it after API setup.");
       await client.invalidateQueries({ queryKey: ["whatsapp-config"] });
     } catch (error) {
       setConnectNotice(error instanceof Error ? error.message : "Phone registration failed. Verify the PIN and try again.");
@@ -165,17 +168,37 @@ function WhatsAppSettings() {
     event.preventDefault();
     if (!config.data) { setNotice("WhatsApp configuration is not provisioned for this agency."); return; }
     setBusy(true); setNotice("");
-    const { error } = await supabase.from("whatsapp_configs").update({
-      ai_greeting: greeting.trim() || null,
-      ai_instructions: instructions.trim() || null,
-      ai_language: language,
-      ai_tone: tone,
-      auto_create_leads: autoLead,
-    }).eq("agency_id", config.data.agency_id);
-    setBusy(false);
-    if (error) { setNotice(error.message); return; }
-    setNotice("Preferences saved. AI remains disabled until outbound messaging safeguards are deployed.");
-    await client.invalidateQueries({ queryKey: ["whatsapp-config"] });
+    try {
+      await savePreferences({ data: {
+        greeting,
+        instructions,
+        language: language as "auto" | "ur" | "en" | "ur-en",
+        tone: tone as "friendly" | "professional" | "concise",
+        autoCreateLeads: autoLead,
+      } });
+      setNotice("Preferences saved. Automated replies are controlled separately.");
+      await client.invalidateQueries({ queryKey: ["whatsapp-config"] });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not save assistant preferences.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleAiEnabled() {
+    if (!config.data) return;
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const nextEnabled = !config.data.ai_enabled;
+      await changeAiState({ data: { enabled: nextEnabled } });
+      await client.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      setNotice(nextEnabled ? "AI replies enabled. Keep the worker scheduled and monitor the inbox." : "AI replies disabled.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Could not change AI reply state.");
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   return <AppShell title="WhatsApp assistant" description="Connect the official Meta Cloud API and configure agency-specific assistant preferences.">
@@ -193,11 +216,11 @@ function WhatsAppSettings() {
           <button disabled={registering || registrationPin.length !== 6} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-60">{registering ? "Registering…" : "Register phone number"}</button>
         </form> : null}
       </div>
-      <div className="surface-panel p-5"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="size-5"/></span><div><h2 className="font-semibold">Safety controls</h2><p className="text-sm text-muted-foreground">Human takeover always wins.</p></div></div><p className="mt-4 text-sm text-muted-foreground">Incoming messages are verified, mapped to a tenant by phone-number ID, and placed in a durable queue. Automated replies stay disabled until opt-out, template, 24-hour-window, quota and human-handoff rules are enforced.</p></div>
+      <div className="surface-panel p-5"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="size-5"/></span><div><h2 className="font-semibold">Safety controls</h2><p className="text-sm text-muted-foreground">Human takeover always wins.</p></div></div><p className="mt-4 text-sm text-muted-foreground">Incoming messages are signature-verified, tenant-routed, and queued durably. AI replies are blocked after opt-out, on human handoff, outside the 24-hour service window, or when the agency/customer reply limits are reached.</p><div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><div><p className="text-sm font-medium">Automated replies: {config.data?.ai_enabled ? "Enabled" : "Off"}</p><p className="mt-1 text-xs text-muted-foreground">Requires a connected number and server-side API secrets.</p></div>{access.data?.role === "agency_admin" ? <button type="button" onClick={() => void toggleAiEnabled()} disabled={aiBusy || !config.data} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-60">{aiBusy ? "Updating…" : config.data?.ai_enabled ? "Disable AI replies" : "Enable AI replies"}</button> : null}</div>{aiError ? <p role="alert" className="mt-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{aiError}</p> : null}</div>
     </div>
     <form onSubmit={save} className="surface-panel space-y-5 p-5"><div className="flex items-center gap-2"><Bot className="size-5 text-primary"/><h2 className="font-semibold">Assistant preferences</h2></div>
-      <label className="block space-y-1.5 text-sm font-medium">Greeting<textarea rows={2} value={greeting} onChange={e=>setGreeting(e.target.value)} className="block w-full rounded-lg border border-input bg-background p-3 font-normal" placeholder="Assalam-o-alaikum! How can we help with your property search?"/></label>
-      <label className="block space-y-1.5 text-sm font-medium">Instructions<textarea rows={4} value={instructions} onChange={e=>setInstructions(e.target.value)} className="block w-full rounded-lg border border-input bg-background p-3 font-normal" placeholder="Approved agency information and how enquiries should be handled."/></label>
+      <label className="block space-y-1.5 text-sm font-medium">Greeting<textarea rows={2} maxLength={500} value={greeting} onChange={e=>setGreeting(e.target.value)} className="block w-full rounded-lg border border-input bg-background p-3 font-normal" placeholder="Assalam-o-alaikum! How can we help with your property search?"/></label>
+      <label className="block space-y-1.5 text-sm font-medium">Instructions<textarea rows={4} maxLength={2000} value={instructions} onChange={e=>setInstructions(e.target.value)} className="block w-full rounded-lg border border-input bg-background p-3 font-normal" placeholder="Approved agency information and how enquiries should be handled."/></label>
       <div className="grid gap-4 sm:grid-cols-2"><label className="space-y-1.5 text-sm font-medium">Language<select value={language} onChange={e=>setLanguage(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"><option value="auto">Auto-detect</option><option value="ur">Urdu</option><option value="en">English</option><option value="ur-en">Urdu + English</option></select></label><label className="space-y-1.5 text-sm font-medium">Tone<select value={tone} onChange={e=>setTone(e.target.value)} className="mt-1 block h-10 w-full rounded-lg border border-input bg-background px-3 font-normal"><option value="friendly">Friendly</option><option value="professional">Professional</option><option value="concise">Concise</option></select></label></div>
       <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={autoLead} onChange={e=>setAutoLead(e.target.checked)} className="size-4 accent-primary"/>Allow lead creation from incoming enquiries once processing is enabled</label>
       {notice ? <p role="status" className="rounded-lg bg-muted p-3 text-sm">{notice}</p> : null}

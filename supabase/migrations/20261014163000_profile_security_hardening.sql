@@ -83,7 +83,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
   SELECT _user_id = auth.uid() AND EXISTS (
     SELECT 1
     FROM public.user_roles ur
@@ -92,9 +92,13 @@ AS $
     WHERE ur.user_id = auth.uid()
       AND ur.role = _role
       AND p.status = 'active'
-      AND (p.agency_id IS NULL OR a.status = 'active')
+      AND (
+        (_role = 'super_admin' AND ur.agency_id IS NULL AND p.agency_id IS NULL)
+        OR
+        (_role <> 'super_admin' AND ur.agency_id = p.agency_id AND a.status = 'active')
+      )
   );
-$;
+$$;
 
 -- Client-side provisioning is not permitted; trusted server functions use service_role.
 REVOKE INSERT, DELETE ON TABLE public.agencies FROM PUBLIC, anon, authenticated;

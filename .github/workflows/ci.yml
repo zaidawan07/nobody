@@ -36,6 +36,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Secret hygiene check
+        run: bun run secrets:check
+
       - name: Build
         run: bun run build
 

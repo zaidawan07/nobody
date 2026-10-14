@@ -108,7 +108,7 @@ function PlatformBillingPage() {
         maxLeads: leads,
         maxTeamMembers: members,
         maxAiRepliesPerDay: ai ?? 0,
-        isActive: form.get("isActive") === "on",
+        isActive: plans.data?.find((plan) => plan.id === planId)?.code === "starter" ? true : form.get("isActive") === "on",
       } });
       setNotice("Plan settings saved.");
       await Promise.all([

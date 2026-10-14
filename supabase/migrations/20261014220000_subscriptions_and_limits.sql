@@ -199,6 +199,11 @@ CREATE POLICY "agency admins request subscription changes" ON public.subscriptio
     AND status = 'open'
     AND resolved_by IS NULL
     AND resolved_at IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public.subscription_plans p
+      WHERE p.id = subscription_change_requests.requested_plan_id
+        AND p.is_active = true
+    )
   );
 CREATE POLICY "super admins manage subscription plans" ON public.subscription_plans
   FOR ALL TO authenticated USING (public.is_super_admin()) WITH CHECK (public.is_super_admin());

@@ -42,7 +42,7 @@ function ReportsPage() {
     queryKey: ["report-leads", access.data?.agencyId, period],
     enabled: !!access.data?.agencyId,
     queryFn: async () => {
-      let query = supabase.from("leads").select("id,name,phone,city,status,budget_min_pkr,budget_max_pkr,created_at").order("created_at", { ascending: false });
+      let query = supabase.from("leads").select("id,name,phone,preferred_city,status,budget_min_pkr,budget_max_pkr,created_at").order("created_at", { ascending: false });
       if (startDate) query = query.gte("created_at", startDate);
       const { data, error } = await query;
       if (error) throw error;
@@ -82,7 +82,7 @@ function ReportsPage() {
   }
   function exportLeads() {
     downloadCsv("estateos-leads.csv", toCsv(leadRows.map((row) => ({
-      name: row.name, phone: row.phone, city: row.city, status: row.status,
+      name: row.name, phone: row.phone, city: row.preferred_city, status: row.status,
       budget_min_pkr: row.budget_min_pkr, budget_max_pkr: row.budget_max_pkr, created_at: row.created_at,
     })), [
       { key: "name", label: "Lead name" }, { key: "phone", label: "Phone" }, { key: "city", label: "City" },

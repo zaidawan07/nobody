@@ -75,7 +75,7 @@ Meta WhatsApp variables (configure only during the final integration phase):
 - `META_WEBHOOK_VERIFY_TOKEN` — webhook verification secret.
 - `OPENAI_API_KEY` — AI provider key (server-only; configure in both app hosting and Supabase Edge Function secrets).
 - `OPENAI_MODEL` — defaults to `gpt-4o-mini`.
-- `AI_MAX_REPLIES_PER_AGENCY_PER_DAY` — defaults to `500`.
+- `AI_MAX_REPLIES_PER_AGENCY_PER_DAY` — defaults to `2000`.
 - `AI_MAX_REPLIES_PER_CONVERSATION_PER_HOUR` — defaults to `20`.
 
 Set server-side secrets in the hosting environment and Edge Function secrets in Supabase. Do not commit real credentials. Before connecting a provider, run `bun run env:check` for the base Supabase configuration, `bun run env:check -- --bootstrap` when preparing first-owner bootstrap, `bun run env:check -- --whatsapp` for Meta setup, or `bun run env:check -- --ai` to validate the full WhatsApp + AI environment. The checker reports variable names and configuration errors only; it never prints secret values. The service-role key, Meta app secret, encryption key, and bootstrap secret must never be sent to the browser.

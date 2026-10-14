@@ -31,24 +31,6 @@ export const getMyAccess = createServerFn({ method: "GET" })
     if (profileError) throw new Error("Unable to load your account profile.");
     if (rolesError) throw new Error("Unable to verify your access role.");
 
-    const { data: profile, error: profileError } = await context.supabase
-      .from("profiles")
-      .select("agency_id")
-      .eq("id", context.userId)
-      .maybeSingle();
-    if (profileError || !profile || profile.agency_id) {
-      throw new Error("Only an unassigned platform account can claim the first-owner seat.");
-    }
-    const { data: existingRoles, error: existingRolesError } = await context.supabase
-      .from("user_roles")
-      .select("id")
-      .eq("user_id", context.userId)
-      .limit(1);
-    if (existingRolesError) throw new Error("Unable to verify your current roles.");
-    if ((existingRoles ?? []).length > 0) {
-      throw new Error("An account with an existing role cannot claim platform ownership.");
-    }
-
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { count, error: countError } = await supabaseAdmin
       .from("user_roles")
@@ -84,6 +66,24 @@ export const claimSuperAdmin = createServerFn({ method: "POST" })
     }
     if (!(await constantTimeSecretMatch(data.bootstrapSecret, expectedSecret))) {
       throw new Error("Invalid platform bootstrap secret.");
+    }
+
+    const { data: profile, error: profileError } = await context.supabase
+      .from("profiles")
+      .select("agency_id")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (profileError || !profile || profile.agency_id) {
+      throw new Error("Only an unassigned platform account can claim the first-owner seat.");
+    }
+    const { data: existingRoles, error: existingRolesError } = await context.supabase
+      .from("user_roles")
+      .select("id")
+      .eq("user_id", context.userId)
+      .limit(1);
+    if (existingRolesError) throw new Error("Unable to verify your current roles.");
+    if ((existingRoles ?? []).length > 0) {
+      throw new Error("An account with an existing role cannot claim platform ownership.");
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

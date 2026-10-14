@@ -12,3 +12,9 @@ Before applying them:
 The security migration is additive and follows the foundation migration. It has not been applied to local, staging or production databases by this change.
 
 The first-owner bootstrap endpoint also requires a server-only `PLATFORM_BOOTSTRAP_SECRET`. Configure it in the deployment's secret manager before using `/bootstrap`; never expose it through a `VITE_` variable.
+
+## WhatsApp Cloud API prerequisites
+
+The WhatsApp migration adds server-only token/session/webhook storage and deliberately removes broad browser access to the WhatsApp configuration table. The client must query only the safe columns granted in the migration; it must never request `select("*")` from `whatsapp_configs`.
+
+Configure these server secrets before connecting a real number: `META_APP_ID`, `META_APP_SECRET`, `META_EMBEDDED_SIGNUP_CONFIG_ID`, `META_GRAPH_API_VERSION`, `META_TOKEN_ENCRYPTION_KEY` (base64-encoded 32-byte key), `META_WEBHOOK_VERIFY_TOKEN`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`. Keep all of them server-side. The Meta app must be reviewed/approved for the required WhatsApp permissions and use Embedded Signup v4.

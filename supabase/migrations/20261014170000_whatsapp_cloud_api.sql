@@ -26,8 +26,7 @@ ALTER TABLE public.conversation_messages
   ADD COLUMN IF NOT EXISTS error_message text;
 
 CREATE UNIQUE INDEX IF NOT EXISTS conversation_messages_provider_message_id_uidx
-  ON public.conversation_messages (provider_message_id)
-  WHERE provider_message_id IS NOT NULL;
+  ON public.conversation_messages (provider_message_id);
 
 CREATE TABLE IF NOT EXISTS public.whatsapp_connection_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

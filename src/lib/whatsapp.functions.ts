@@ -1,12 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 type AgencyAdminContext = { agencyId: string; userId: string };
 
 async function requireAgencyAdmin(
-  supabase: Parameters<typeof requireSupabaseAuth>[0] extends never ? never : any,
+  supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<AgencyAdminContext> {
   const { data: profile, error: profileError } = await supabase

@@ -167,9 +167,13 @@ async function generateAiReply(
   history: Array<{ sender: string; body: string | null }>,
   isFirstMessage: boolean,
 ): Promise<string> {
-  const language = config.ai_language === "auto"
-    ? "Match the language used by the customer; for Urdu, use natural Urdu script unless they use Roman Urdu."
-    : "Respond in " + config.ai_language + ".";
+  const language = config.ai_language === "ur"
+    ? "Respond in natural Urdu script."
+    : config.ai_language === "en"
+    ? "Respond in English."
+    : config.ai_language === "ur-en"
+    ? "Use a natural Urdu-English mix and mirror the customer’s language."
+    : "Match the language used by the customer; for Urdu, use natural Urdu script unless they use Roman Urdu.";
   const inventory = JSON.stringify(properties.map((property) => ({
     title: property.title,
     city: property.city,
@@ -244,16 +248,52 @@ async function maybeSendAiReply(
   const encryptionKey = Deno.env.get("META_TOKEN_ENCRYPTION_KEY");
   const appSecret = Deno.env.get("META_APP_SECRET");
   const graphVersion = Deno.env.get("META_GRAPH_API_VERSION") || "v25.0";
+  const handoff = async (reason: string) => {
+    await admin.from("conversations").update({
+      state: "human_active",
+      handoff_requested: true,
+      handoff_reason: reason.slice(0, 500),
+    }).eq("id", conversation.id).eq("agency_id", event.agency_id).neq("state", "closed");
+  };
   if (!openAiKey || !encryptionKey || !appSecret || !config.access_token_encrypted || !config.phone_number_id) {
     console.error("AI is enabled but required server secrets or WhatsApp connection data are missing.");
+    await handoff("Automated replies are unavailable; human follow-up is required.");
     return;
   }
   if (!/^v\d+\.\d+$/.test(graphVersion)) {
     console.error("AI reply skipped because META_GRAPH_API_VERSION is invalid.");
+    await handoff("WhatsApp API configuration needs review; human follow-up is required.");
     return;
   }
   if (config.access_token_expires_at && new Date(config.access_token_expires_at).getTime() <= Date.now()) {
     console.error("AI reply skipped because the WhatsApp access token has expired.");
+    await handoff("WhatsApp access has expired; reconnect the channel and reply manually.");
+    return;
+  }
+
+  const now = new Date();
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  const hourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+  const configuredDailyLimit = Number(Deno.env.get("AI_MAX_REPLIES_PER_AGENCY_PER_DAY") || "500");
+  const configuredHourlyLimit = Number(Deno.env.get("AI_MAX_REPLIES_PER_CONVERSATION_PER_HOUR") || "20");
+  const dailyLimit = Number.isSafeInteger(configuredDailyLimit) && configuredDailyLimit > 0 ? configuredDailyLimit : 500;
+  const hourlyLimit = Number.isSafeInteger(configuredHourlyLimit) && configuredHourlyLimit > 0 ? configuredHourlyLimit : 20;
+  const [dailyUsage, conversationUsage, freshConversation] = await Promise.all([
+    admin.from("conversation_messages").select("id", { count: "exact", head: true })
+      .eq("agency_id", event.agency_id).eq("sender", "ai").gte("created_at", dayStart),
+    admin.from("conversation_messages").select("id", { count: "exact", head: true })
+      .eq("agency_id", event.agency_id).eq("conversation_id", conversation.id).eq("sender", "ai").gte("created_at", hourAgo),
+    admin.from("conversations").select("state,handoff_requested,opted_out_at,last_customer_message_at")
+      .eq("agency_id", event.agency_id).eq("id", conversation.id).maybeSingle(),
+  ]);
+  if (dailyUsage.error || conversationUsage.error || freshConversation.error) {
+    throw new Error("Could not verify AI safety limits and conversation state.");
+  }
+  if (!freshConversation.data || freshConversation.data.state !== "ai_active" || freshConversation.data.handoff_requested || freshConversation.data.opted_out_at) return;
+  const freshInboundAt = freshConversation.data.last_customer_message_at ? new Date(freshConversation.data.last_customer_message_at).getTime() : Number.NaN;
+  if (!Number.isFinite(freshInboundAt) || Date.now() - freshInboundAt > 24 * 60 * 60 * 1000) return;
+  if ((dailyUsage.count ?? 0) >= dailyLimit || (conversationUsage.count ?? 0) >= hourlyLimit) {
+    await handoff("Automated reply safety limit reached; human follow-up is required.");
     return;
   }
 
@@ -305,6 +345,7 @@ async function maybeSendAiReply(
     );
   } catch (error) {
     console.error("AI reply generation failed:", error instanceof Error ? error.message : "unknown error");
+    await handoff("Automated reply failed; human follow-up is required.");
     return;
   }
 
@@ -324,6 +365,18 @@ async function maybeSendAiReply(
   }
 
   try {
+    const { data: currentState, error: stateError } = await admin.from("conversations")
+      .select("state,handoff_requested,opted_out_at,last_customer_message_at")
+      .eq("id", conversation.id).eq("agency_id", event.agency_id).maybeSingle();
+    if (stateError || !currentState || currentState.state !== "ai_active" || currentState.handoff_requested || currentState.opted_out_at) {
+      await admin.from("conversation_messages").update({ provider_status: "failed", failed_at: new Date().toISOString(), error_message: "Human handoff or opt-out took precedence." }).eq("id", reserved.id);
+      return;
+    }
+    const lastInboundAt = currentState.last_customer_message_at ? new Date(currentState.last_customer_message_at).getTime() : Number.NaN;
+    if (!Number.isFinite(lastInboundAt) || Date.now() - lastInboundAt > 24 * 60 * 60 * 1000) {
+      await admin.from("conversation_messages").update({ provider_status: "failed", failed_at: new Date().toISOString(), error_message: "The 24-hour customer service window has closed." }).eq("id", reserved.id);
+      return;
+    }
     const token = await decryptAccessToken(config.access_token_encrypted, encryptionKey);
     const proof = await hmacHex(appSecret, token);
     const sendUrl = new URL("https://graph.facebook.com/" + graphVersion + "/" + config.phone_number_id + "/messages");
@@ -364,6 +417,7 @@ async function maybeSendAiReply(
       error_message: message,
     }).eq("id", reserved.id).eq("agency_id", event.agency_id);
     console.error("AI reply could not be sent; it was recorded as failed.");
+    await handoff("Automated reply could not be delivered; human follow-up is required.");
   }
 }
 

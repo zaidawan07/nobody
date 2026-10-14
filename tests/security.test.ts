@@ -43,6 +43,7 @@ describe("database security migrations", () => {
     "../supabase/migrations/20261014170000_whatsapp_cloud_api.sql",
     "../supabase/migrations/20261014183000_tenant_relationships_and_rls.sql",
     "../supabase/migrations/20261014190000_webhook_worker_recovery.sql",
+    "../supabase/migrations/20261014200000_agency_tasks.sql",
   ];
 
   it("uses balanced dollar-quoted SQL blocks in every migration", () => {
@@ -107,5 +108,21 @@ describe("spreadsheet CSV exports", () => {
   it("exports empty data as a header-only document", () => {
     const csv = toCsv([] as Array<{ name: string }>, [{ key: "name", label: "Name" }]);
     expect(csv).toBe("\uFEFF\"Name\"\r\n");
+  });
+});
+
+
+describe("agency follow-up task isolation", () => {
+  it("binds task assignees, leads, and properties to the same agency", () => {
+    const sql = readFileSync(
+      new URL("../supabase/migrations/20261014200000_agency_tasks.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("agency_tasks_assignee_same_agency_fk");
+    expect(sql).toContain("agency_tasks_lead_same_agency_fk");
+    expect(sql).toContain("agency_tasks_property_same_agency_fk");
+    expect(sql).toContain("agency_tasks_creator_same_agency_fk");
+    expect(sql).toContain('USING (agency_id = public.current_agency_id())');
+    expect(sql).toContain('USING (public.is_agency_admin(agency_id))');
   });
 });

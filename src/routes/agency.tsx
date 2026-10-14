@@ -48,7 +48,7 @@ function AgencyDashboard() {
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground"><Building2 className="size-3.5" /> {access?.role?.replace("_", " ") ?? "Account"}</div>
       </div>
       {counts.isError ? <p role="alert" className="mb-5 rounded-lg bg-destructive/10 p-4 text-sm text-destructive">We couldn't load the workspace summary. Check your connection and access permissions, then refresh.</p> : null}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => (
           <Link key={metric.key} to={metric.to} className="surface-panel group p-5 transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between"><span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><metric.icon className="size-5" /></span><ArrowUpRight className="size-4 text-muted-foreground transition group-hover:text-primary" /></div>

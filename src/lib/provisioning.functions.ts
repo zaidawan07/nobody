@@ -105,7 +105,7 @@ export const addTeamMember = createServerFn({ method: "POST" })
 
     const { data: me, error: meError } = await context.supabase
       .from("profiles")
-      .select("agency_id")
+      .select("agency_id,status")
       .eq("id", context.userId)
       .maybeSingle();
     if (meError) throw new Error(meError.message);

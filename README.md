@@ -7,8 +7,8 @@ EstateOS is a multi-tenant real-estate operations app for Pakistani property age
 ## What is included
 
 - **Platform owner:** provision agencies and suspend/reactivate agency workspaces.
-- **Agency workspace:** inventory, photos, property status, leads and budgets in PKR, assignments, and site visits.
-- **Team access:** agency-admin and employee roles with account status controls.
+- **Agency workspace:** inventory, private property photos, leads and budgets in PKR, assignments, site visits, and due-dated follow-up tasks.
+- **Team and settings:** agency-admin and employee roles, account status controls, self-service profile settings, and agency contact/service-area settings.
 - **Reports:** activity KPIs and spreadsheet-safe CSV exports for properties, leads, and site visits.
 - **WhatsApp foundation:** Meta Embedded Signup, encrypted server-side access tokens, signed webhook verification, durable event storage, duplicate-event handling, delivery status updates, opt-out handling, and a retrying worker.
 - **Security:** tenant-scoped database policies, same-agency relationship constraints, profile field restrictions, server-owned messaging state, and automated checks.

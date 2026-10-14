@@ -44,6 +44,7 @@ describe("database security migrations", () => {
     "../supabase/migrations/20261014183000_tenant_relationships_and_rls.sql",
     "../supabase/migrations/20261014190000_webhook_worker_recovery.sql",
     "../supabase/migrations/20261014200000_agency_tasks.sql",
+    "../supabase/migrations/20261014210000_ai_reply_safeguards.sql",
   ];
 
   it("uses balanced dollar-quoted SQL blocks in every migration", () => {
@@ -124,5 +125,35 @@ describe("agency follow-up task isolation", () => {
     expect(sql).toContain("agency_tasks_creator_same_agency_fk");
     expect(sql).toContain('USING (agency_id = public.current_agency_id())');
     expect(sql).toContain('USING (public.is_agency_admin(agency_id))');
+  });
+});
+
+
+describe("WhatsApp AI reply safety", () => {
+  it("bounds AI configuration in the database", () => {
+    const sql = readFileSync(
+      new URL("../supabase/migrations/20261014210000_ai_reply_safeguards.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("whatsapp_configs_ai_greeting_length_check");
+    expect(sql).toContain("whatsapp_configs_ai_instructions_length_check");
+    expect(sql).toContain("whatsapp_configs_ai_language_check");
+    expect(sql).toContain("conversation_messages_ai_usage_idx");
+  });
+
+  it("keeps opt-out, human handoff, session-window and quota guards in the worker", () => {
+    const worker = readFileSync(
+      new URL("../supabase/functions/whatsapp-webhook-worker/index.ts", import.meta.url),
+      "utf8",
+    );
+    expect(worker).toContain("OPENAI_API_KEY");
+    expect(worker).toContain("store: false");
+    expect(worker).toContain("AI_MAX_REPLIES_PER_AGENCY_PER_DAY");
+    expect(worker).toContain("AI_MAX_REPLIES_PER_CONVERSATION_PER_HOUR");
+    expect(worker).toContain("isOptOutRequest(body)");
+    expect(worker).toContain("conversation.opted_out_at");
+    expect(worker).toContain("24 * 60 * 60 * 1000");
+    expect(worker).toContain("biz_opaque_callback_data");
+    expect(worker).toContain("deterministicRequestId");
   });
 });

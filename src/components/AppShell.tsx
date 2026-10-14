@@ -13,6 +13,7 @@ import {
   BarChart3,
   Settings,
   ClipboardList,
+  CreditCard,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +30,7 @@ interface NavItem {
 
 const platformNav: NavItem[] = [
   { to: "/platform", label: "Agencies", icon: <Building2 className="size-4" /> },
+  { to: "/platform-billing", label: "Plans & billing", icon: <CreditCard className="size-4" /> },
   { to: "/settings", label: "My profile", icon: <Settings className="size-4" /> },
 ];
 
@@ -40,6 +42,8 @@ const agencyNav: NavItem[] = [
   { to: "/visits", label: "Site visits", icon: <CalendarCheck className="size-4" /> },
   { to: "/conversations", label: "WhatsApp inbox", icon: <MessageSquare className="size-4" /> },
   { to: "/reports", label: "Reports & exports", icon: <BarChart3 className="size-4" /> },
+  { to: "/billing", label: "Plan & billing", icon: <CreditCard className="size-4" />,
+  },
   { to: "/settings", label: "My profile", icon: <Settings className="size-4" /> },
 ];
 

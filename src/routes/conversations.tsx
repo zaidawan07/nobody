@@ -1,0 +1,17 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { Bot, MessageSquare } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
+import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+type ConversationState = Database["public"]["Enums"]["conversation_state"];
+export const Route = createFileRoute("/conversations")({ ssr: false, beforeLoad: async () => { const { data, error } = await supabase.auth.getUser(); if (error || !data.user) throw redirect({ to: "/auth" }); }, head: () => ({ meta: [{ title: "WhatsApp inbox — EstateOS" }] }), component: ConversationsPage });
+function ConversationsPage() {
+  const client = useQueryClient();
+  const list = useQuery({ queryKey: ["conversations"], queryFn: async () => { const { data, error } = await supabase.from("conversations").select("*").order("last_message_at", { ascending: false, nullsFirst: false }); if (error) throw error; return data; } });
+  async function update(id: string, state: ConversationState) { const result = await supabase.from("conversations").update({ state, handoff_requested: state === "human_active" }).eq("id", id); if (!result.error) await client.invalidateQueries({ queryKey: ["conversations"] }); }
+  return <AppShell title="WhatsApp inbox" description="Review stored customer conversations and decide when a human should take over.">
+    <div className="mb-5 flex items-start gap-3 rounded-xl border border-border bg-muted/40 p-4"><Bot className="mt-0.5 size-5 text-primary" /><p className="text-sm text-muted-foreground"><span className="font-medium text-foreground">Integration status:</span> this inbox currently displays records stored in the database. Live WhatsApp sending, webhook processing and delivery receipts are not enabled until the official Meta Cloud API connection is configured.</p></div>
+    <div className="surface-panel overflow-hidden">{list.isLoading ? <p className="p-8 text-center text-sm text-muted-foreground">Loading conversations…</p> : list.isError ? <p role="alert" className="p-8 text-center text-sm text-destructive">Could not load conversations.</p> : (list.data ?? []).length === 0 ? <div className="p-10 text-center"><MessageSquare className="mx-auto size-8 text-muted-foreground" /><h3 className="mt-3 font-semibold">No conversations stored</h3><p className="mt-1 text-sm text-muted-foreground">Conversations will appear here after a connected channel receives messages.</p></div> : <div className="divide-y divide-border">{(list.data ?? []).map(c => <article key={c.id} className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{c.customer_name || c.customer_phone}</p><p className="mt-1 text-xs text-muted-foreground">{c.customer_phone}</p>{c.handoff_reason ? <p className="mt-2 text-sm text-muted-foreground">Handoff: {c.handoff_reason}</p> : null}</div><div className="flex items-center gap-3"><span className="rounded-full bg-secondary px-2.5 py-1 text-xs">{c.state.replace("_", " ")}</span><select aria-label="Conversation state" value={c.state} onChange={e => update(c.id, e.target.value as ConversationState)} className="h-9 rounded-md border border-input bg-background px-2 text-xs"><option value="ai_active">AI active</option><option value="human_active">Human active</option><option value="closed">Closed</option></select></div></article>)}</div>}</div>
+  </AppShell>;
+}

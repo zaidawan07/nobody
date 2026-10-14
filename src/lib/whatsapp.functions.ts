@@ -418,3 +418,45 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
       throw new Error(safeMessage);
     }
   });
+
+
+/** Enable or disable automated replies only after the server safeguards are configured. */
+export const setWhatsAppAiEnabled = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ enabled: z.boolean() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { agencyId } = await requireAgencyAdmin(context.supabase, context.userId);
+    if (data.enabled) {
+      if (!process.env["OPENAI_API_KEY"]) {
+        throw new Error("AI replies are not ready yet. Add OPENAI_API_KEY to the server environment first.");
+      }
+      const meta = requiredMetaConfig();
+      const admin = adminClient();
+      const { data: connection, error } = await admin
+        .from("whatsapp_configs")
+        .select("connection_status,phone_number_id,access_token_encrypted,access_token_expires_at")
+        .eq("agency_id", agencyId)
+        .maybeSingle();
+      if (error || !connection || connection.connection_status !== "connected" || !connection.phone_number_id || !connection.access_token_encrypted) {
+        throw new Error("Connect and register the agency WhatsApp number before enabling AI replies.");
+      }
+      if (connection.access_token_expires_at && new Date(connection.access_token_expires_at).getTime() <= Date.now()) {
+        throw new Error("The WhatsApp access token has expired. Reconnect the number before enabling AI replies.");
+      }
+      if (!meta.encryptionKey || !meta.appSecret) {
+        throw new Error("WhatsApp token encryption and Meta app secrets are required before enabling AI replies.");
+      }
+      const { error: updateError } = await admin.from("whatsapp_configs")
+        .update({ ai_enabled: true })
+        .eq("agency_id", agencyId);
+      if (updateError) throw new Error("Could not enable AI replies.");
+      return { enabled: true };
+    }
+
+    const admin = adminClient();
+    const { error } = await admin.from("whatsapp_configs")
+      .update({ ai_enabled: false })
+      .eq("agency_id", agencyId);
+    if (error) throw new Error("Could not disable AI replies.");
+    return { enabled: false };
+  });

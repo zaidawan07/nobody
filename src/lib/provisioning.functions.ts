@@ -330,3 +330,58 @@ export const resolveSubscriptionRequest = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message.includes("already resolved") ? "This request has already been resolved." : "Could not resolve the subscription request.");
     return { ok: true };
   });
+
+
+const subscriptionRequestSchema = z.object({
+  planId: z.string().uuid(),
+  note: z.string().trim().max(1000).optional(),
+});
+
+/** Agency admin: request a plan change for their own workspace. */
+export const requestSubscriptionChange = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => subscriptionRequestSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertRole(context.supabase as never, context.userId, "agency_admin");
+
+    const { data: actor, error: actorError } = await context.supabase
+      .from("profiles")
+      .select("agency_id,status")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (actorError || !actor?.agency_id || actor.status !== "active") {
+      throw new Error("An active agency administrator is required to request a plan change.");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: plan, error: planError } = await supabaseAdmin
+      .from("subscription_plans")
+      .select("id,is_active")
+      .eq("id", data.planId)
+      .maybeSingle();
+    if (planError || !plan || !plan.is_active) {
+      throw new Error("That subscription plan is unavailable.");
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("subscription_change_requests")
+      .select("id")
+      .eq("agency_id", actor.agency_id)
+      .eq("status", "open")
+      .maybeSingle();
+    if (existingError) throw new Error("Could not check for an existing plan request.");
+    if (existing) throw new Error("Your agency already has an open plan request. Wait for the platform owner to resolve it.");
+
+    const { error: insertError } = await supabaseAdmin.from("subscription_change_requests").insert({
+      agency_id: actor.agency_id,
+      requested_plan_id: data.planId,
+      note: data.note?.trim() || null,
+      created_by: context.userId,
+      status: "open",
+    });
+    if (insertError?.code === "23505") {
+      throw new Error("Your agency already has an open plan request. Wait for the platform owner to resolve it.");
+    }
+    if (insertError) throw new Error("Could not submit the plan request. Please try again.");
+    return { ok: true };
+  });

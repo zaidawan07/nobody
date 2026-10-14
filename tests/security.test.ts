@@ -48,6 +48,7 @@ describe("database security migrations", () => {
     "../supabase/migrations/20261014210000_ai_reply_safeguards.sql",
     "../supabase/migrations/20261014220000_subscriptions_and_limits.sql",
     "../supabase/migrations/20261014230000_lead_activity_timeline.sql",
+    "../supabase/migrations/20261014240000_conversation_inbox_workflow.sql",
   ];
 
   it("uses balanced dollar-quoted SQL blocks in every migration", () => {
@@ -267,5 +268,36 @@ describe("lead activity timeline isolation", () => {
     expect(sql).toContain("conversation_messages_record_lead_activity_after_insert");
     expect(sql).toContain("WhatsApp message received");
     expect(sql).not.toContain("NEW.body");
+  });
+});
+
+
+describe("conversation inbox server boundaries", () => {
+  it("keeps browser message writes disabled and tracks unread customer messages", () => {
+    const sql = readFileSync(
+      new URL("../supabase/migrations/20261014240000_conversation_inbox_workflow.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toContain("unread_count integer NOT NULL DEFAULT 0");
+    expect(sql).toContain("message_kind IN ('whatsapp', 'internal_note')");
+    expect(sql).toContain("REVOKE INSERT, UPDATE, DELETE ON public.conversation_messages FROM PUBLIC, anon, authenticated");
+    expect(sql).toContain("NEW.sender::text = 'customer'");
+    expect(sql).toContain("conversation_messages_track_unread_after_insert");
+    expect(sql).toContain("Internal note added");
+  });
+
+  it("routes inbox assignment, read receipts, and internal notes through validated server functions", () => {
+    const server = readFileSync(new URL("../src/lib/conversations.functions.ts", import.meta.url), "utf8");
+    const route = readFileSync(new URL("../src/routes/conversations.tsx", import.meta.url), "utf8");
+    expect(server).toContain("getActiveAgency");
+    expect(server).toContain("assertConversationInAgency");
+    expect(server).toContain("Choose an active team member from your agency.");
+    expect(server).toContain("message_kind: \"internal_note\"");
+    expect(route).toContain("assignConversation");
+    expect(route).toContain("markConversationRead");
+    expect(route).toContain("createInternalNote");
+    expect(route).toContain("Search conversations");
+    expect(route).toContain("unread_count");
+    expect(route).toContain("Load older");
   });
 });

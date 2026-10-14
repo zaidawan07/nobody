@@ -954,6 +954,7 @@ export type Database = {
       }
       is_agency_admin: { Args: { _agency_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      reorder_property_media: { Args: { _direction: string; _media_id: string }; Returns: undefined }
       resolve_subscription_change_request: {
         Args: { _request_id: string; _decision: string; _actor_id: string }
         Returns: undefined

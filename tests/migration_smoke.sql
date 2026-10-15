@@ -105,13 +105,13 @@ BEGIN
   PERFORM set_config('test.other_agency_id', v_other_agency_id::text, true);
   PERFORM set_config('test.other_lead_id', v_other_lead_id::text, true);
 END;
-$;
+$$;
 
 -- Simulate an authenticated user from the first agency. The other agency's
 -- lead and activity rows must be invisible and cross-tenant writes must fail.
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', current_setting('test.profile_id'), true);
-DO $
+DO $$
 DECLARE
   v_visible_count integer;
   v_updated_count integer;
@@ -146,7 +146,7 @@ BEGIN
     RAISE EXCEPTION 'Cross-agency lead update unexpectedly succeeded';
   END IF;
 END;
-$;
+$$;
 RESET ROLE;
 
 ROLLBACK;

@@ -6,6 +6,7 @@ import { StatCard, EmptyState } from "@/components/shared/ui";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchAgencyStats } from "@/lib/queries";
+import { FollowUpsDue } from "@/components/leads/FollowUpsDue";
 
 export const Route = createFileRoute("/_authenticated/agency/")({
   head: () => ({ meta: [{ title: "Agency overview — EstateOS" }] }),
@@ -66,6 +67,8 @@ function AgencyDashboard() {
           <StatCard label="Employees" value={data.employees} icon={Users} />
         </div>
       )}
+
+      <FollowUpsDue />
     </AppShell>
   );
 }

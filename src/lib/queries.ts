@@ -580,6 +580,32 @@ export async function createProperty(input: NewPropertyInput): Promise<{ id: str
 
 export type LeadRow = Tables<"leads"> & { assignee_name: string | null };
 
+/**
+ * Adds a timeline entry to a lead. The trigger derives agency_id from the
+ * lead, and RLS checks can_access_assigned_lead, so this only works for a
+ * lead the caller may see. A failure here must not fail the caller's save,
+ * so the error is surfaced as a console warning instead of thrown.
+ */
+export async function logLeadActivity(
+  leadId: string,
+  entry: {
+    type: "note" | "call" | "status_change" | "visit" | "assignment" | "system";
+    body?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const { error } = await supabase.from("lead_activities").insert({
+    lead_id: leadId,
+    type: entry.type,
+    body: entry.body ?? null,
+    metadata: (entry.metadata ?? {}) as never,
+  });
+  if (error) {
+    console.warn(`[lead-activity] could not record a ${entry.type} entry: ${error.message}`);
+  }
+}
+
 export async function fetchLeads(agencyId: string): Promise<LeadRow[]> {
   const { data, error } = await supabase
     .from("leads")

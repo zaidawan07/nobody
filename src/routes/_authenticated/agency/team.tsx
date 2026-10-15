@@ -39,19 +39,26 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { fetchTeamMembers, type TeamMember } from "@/lib/queries";
-import { addTeamMember, setMemberStatus } from "@/lib/provisioning.functions";
+import {
+  inviteTeamMember,
+  listInvitations,
+  resendInvitation,
+  revokeInvitation,
+} from "@/lib/invitations.functions";
+import { setMemberStatus } from "@/lib/provisioning.functions";
 
 export const Route = createFileRoute("/_authenticated/agency/team")({
   head: () => ({ meta: [{ title: "Team — EstateOS" }] }),
   component: TeamPage,
 });
 
+// No password field: the invitee sets their own on /accept-invitation.
 const schema = z.object({
   fullName: z.string().min(2, "Enter their name"),
   email: z.string().min(1, "Enter their email").email("Enter a valid email"),
   phone: z.string().optional(),
   jobTitle: z.string().optional(),
-  password: z.string().min(8, "At least 8 characters"),
+  role: z.enum(["agency_admin", "employee"]),
 });
 
 function TeamPage() {
@@ -92,12 +99,12 @@ function TeamPage() {
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus className="size-4" /> Add employee
+              <Plus className="size-4" /> Invite teammate
             </Button>
           </DialogTrigger>
-          <AddMemberDialog
+          <InviteMemberDialog
             agencyId={agencyId}
-            onAdded={() => {
+            onInvited={() => {
               setOpen(false);
               queryClient.invalidateQueries({ queryKey: ["team-members", agencyId] });
               queryClient.invalidateQueries({ queryKey: ["agency-stats", agencyId] });
@@ -181,130 +188,376 @@ function TeamPage() {
           </Table>
         </div>
       )}
+
+      <PendingInvites agencyId={agencyId} />
     </AppShell>
   );
 }
 
-function AddMemberDialog({ agencyId, onAdded }: { agencyId: string; onAdded: () => void }) {
-  const add = useServerFn(addTeamMember);
+type InviteResult = {
+  actionLink: string;
+  expiresAt: string;
+  emailSent: boolean;
+  emailError: string | null;
+  role: "agency_admin" | "employee";
+};
+
+type InvitationRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: "agency_admin" | "employee";
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expires_at: string;
+  accepted_at: string | null;
+  last_sent_at: string | null;
+  send_count: number;
+  created_at: string;
+};
+
+const inviteRoleLabels: Record<string, string> = {
+  agency_admin: "Admin",
+  employee: "Employee",
+};
+
+/** Copy-to-clipboard button for a value that must never be shown in full. */
+function CopyLinkButton({ value }: { value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setDone(true);
+          toast.success("Link copied");
+          setTimeout(() => setDone(false), 2000);
+        } catch {
+          toast.error("Couldn't copy. Select the link and copy it manually.");
+        }
+      }}
+    >
+      {done ? <CheckCircle2 className="size-4" /> : "Copy"}
+    </Button>
+  );
+}
+
+function InviteMemberDialog({ agencyId, onInvited }: { agencyId: string; onInvited: () => void }) {
+  const invite = useServerFn(inviteTeamMember);
   const [formError, setFormError] = useState<string | null>(null);
+  const [result, setResult] = useState<InviteResult | null>(null);
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { fullName: "", email: "", phone: "", jobTitle: "", password: "" },
+    defaultValues: { fullName: "", email: "", phone: "", jobTitle: "", role: "employee" },
   });
 
   async function onSubmit(values: z.infer<typeof schema>) {
     setFormError(null);
     try {
-      await add({ data: { ...values, role: "employee" } });
-      toast.success(`${values.fullName} added`);
-      form.reset();
-      onAdded();
+      const out = await invite({
+        data: {
+          fullName: values.fullName,
+          email: values.email,
+          phone: values.phone || undefined,
+          jobTitle: values.jobTitle || undefined,
+          role: values.role,
+        },
+      });
+      setResult(out as InviteResult);
+      toast.success("Invitation created");
+      onInvited();
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Couldn't add that employee.");
+      setFormError(e instanceof Error ? e.message : "Couldn't create that invitation.");
     }
   }
 
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Add employee</DialogTitle>
+        <DialogTitle>Invite a teammate</DialogTitle>
         <DialogDescription>
-          They'll sign in with this email and password{agencyId ? "" : ""}.
+          They will set their own password when they accept. You never see it, and you cannot invite
+          a platform owner.
         </DialogDescription>
       </DialogHeader>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          {formError ? (
+      {result ? (
+        <div className="space-y-4">
+          <Alert>
+            <CheckCircle2 className="size-4" />
+            <AlertDescription>
+              Invitation created.{" "}
+              {result.emailSent
+                ? "An email was also sent."
+                : "No email was sent — copy the link below and share it yourself (WhatsApp is fine)."}
+            </AlertDescription>
+          </Alert>
+
+          {result.emailError ? (
             <Alert variant="destructive">
               <AlertCircle className="size-4" />
-              <AlertDescription>{formError}</AlertDescription>
+              <AlertDescription>
+                The email could not be sent ({result.emailError}), but the link below works.
+              </AlertDescription>
             </Alert>
           ) : null}
 
-          <FormField
-            control={form.control}
-            name="fullName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Full name</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input type="email" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <FormField
-              control={form.control}
-              name="phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Phone</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Optional" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="jobTitle"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Job title</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Optional" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Invitation link</p>
+            <div className="flex gap-2">
+              <Input readOnly value={result.actionLink} className="font-mono text-xs" />
+              <CopyLinkButton value={result.actionLink} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Expires {new Date(result.expiresAt).toLocaleString()}. You can resend or revoke it
+              from the pending list below.
+            </p>
           </div>
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Password</FormLabel>
-                <FormControl>
-                  <Input type="password" autoComplete="new-password" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
 
           <DialogFooter>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> Adding…
-                </>
-              ) : (
-                "Add employee"
-              )}
+            <Button variant="outline" onClick={() => setResult(null)}>
+              Invite someone else
             </Button>
           </DialogFooter>
-        </form>
-      </Form>
+        </div>
+      ) : (
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {formError ? (
+              <Alert variant="destructive">
+                <AlertCircle className="size-4" />
+                <AlertDescription>{formError}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            <FormField
+              control={form.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Full name</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input type="email" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="jobTitle"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Job title (optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Role</FormLabel>
+                  <FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="employee">
+                          Employee — sees only what is assigned
+                        </SelectItem>
+                        <SelectItem value="agency_admin">
+                          Admin — sees everything in the agency
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <DialogFooter>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Create invitation"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      )}
     </DialogContent>
+  );
+}
+
+/** Pending invitations, with resend and revoke. */
+function PendingInvites({ agencyId }: { agencyId: string }) {
+  const qc = useQueryClient();
+  const [freshLink, setFreshLink] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["invitations", agencyId],
+    queryFn: () => listInvitations(),
+  });
+
+  const resend = useServerFn(resendInvitation);
+  const revoke = useServerFn(revokeInvitation);
+
+  async function onResend(id: string) {
+    setBusy(id);
+    try {
+      const out = (await resend({ data: { invitationId: id } })) as {
+        actionLink: string;
+        emailSent: boolean;
+      };
+      setFreshLink(out.actionLink);
+      toast.success(out.emailSent ? "Invitation resent by email" : "New link ready to copy");
+      qc.invalidateQueries({ queryKey: ["invitations", agencyId] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't resend that invitation.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onRevoke(id: string) {
+    setBusy(id);
+    try {
+      await revoke({ data: { invitationId: id } });
+      toast.success("Invitation revoked");
+      qc.invalidateQueries({ queryKey: ["invitations", agencyId] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't revoke that invitation.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const items = (data?.items ?? []) as InvitationRow[];
+  const pending = items.filter((i) => i.status === "pending");
+  const settled = items.filter((i) => i.status !== "pending");
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-semibold text-foreground">Invitations</h2>
+
+      {isLoading ? (
+        <Skeleton className="h-16 rounded-lg" />
+      ) : pending.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No pending invitations.</p>
+      ) : (
+        <div className="surface-panel divide-y">
+          {pending.map((inv) => (
+            <div key={inv.id} className="flex items-center justify-between gap-3 p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">{inv.email}</p>
+                <p className="text-xs text-muted-foreground">
+                  {inviteRoleLabels[inv.role] ?? inv.role}
+                  {inv.full_name ? " · " + inv.full_name : ""} · expires{" "}
+                  {new Date(inv.expires_at).toLocaleDateString()}
+                  {inv.send_count > 1 ? " · sent " + inv.send_count + "x" : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onResend(inv.id)}
+                  disabled={busy === inv.id}
+                >
+                  Resend
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRevoke(inv.id)}
+                  disabled={busy === inv.id}
+                >
+                  Revoke
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {freshLink ? (
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <p className="text-xs font-medium text-muted-foreground">New invitation link</p>
+          <div className="flex gap-2">
+            <Input readOnly value={freshLink} className="font-mono text-xs" />
+            <CopyLinkButton value={freshLink} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The previous link is now invalid. Copy this one instead.
+          </p>
+        </div>
+      ) : null}
+
+      {settled.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Past invitations</p>
+          <ul className="space-y-1">
+            {settled.slice(0, 8).map((inv) => (
+              <li
+                key={inv.id}
+                className="flex items-center justify-between text-xs text-muted-foreground"
+              >
+                <span className="truncate">{inv.email}</span>
+                <span>
+                  {inv.status === "accepted"
+                    ? "accepted" +
+                      (inv.accepted_at ? " " + new Date(inv.accepted_at).toLocaleDateString() : "")
+                    : inv.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }

@@ -13,12 +13,13 @@ const agencySchema = z.object({
   adminPassword: z.string().min(8),
 });
 
+// The invited role. Deliberately the same two-value union the invitation table
+// enforces, so a caller cannot ask for super_admin here either.
 const memberSchema = z.object({
   fullName: z.string().min(2),
   email: z.string().email(),
   phone: z.string().optional(),
   jobTitle: z.string().optional(),
-  password: z.string().min(8),
   role: z.enum(["agency_admin", "employee"]),
 });
 
@@ -84,51 +85,20 @@ export const provisionAgency = createServerFn({ method: "POST" })
     return { agencyId: agency.id };
   });
 
-/** Agency admin: add a teammate inside their own agency only. */
+/**
+ * DEPRECATED: kept only so an existing caller does not break at build time.
+ * Superseded by inviteTeamMember in lib/invitations.functions.ts, which issues
+ * a link instead of letting the admin choose the member's password.
+ *
+ * This function is no longer registered as a route handler and is not called
+ * from any screen. It throws if invoked, rather than silently continuing to
+ * create accounts with an admin-supplied password.
+ */
 export const addTeamMember = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(memberSchema)
-  .handler(async ({ data, context }) => {
-    await assertRole(context.supabase as never, context.userId, "agency_admin");
-
-    const { data: me, error: meError } = await context.supabase
-      .from("profiles")
-      .select("agency_id")
-      .eq("id", context.userId)
-      .maybeSingle();
-    if (meError) throw new Error(meError.message);
-    if (!me?.agency_id) throw new Error("Your account is not linked to an agency.");
-
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Writes here go through the service-role client, which migration 0008's
-    // profile trigger deliberately skips -- so the plan check happens here.
-    await assertPlanLimit(supabaseAdmin as never, me.agency_id, "team_members");
-    const created = await supabaseAdmin.auth.admin.createUser({
-      email: data.email,
-      password: data.password,
-      email_confirm: true,
-      user_metadata: { full_name: data.fullName },
-    });
-    if (created.error || !created.data.user) {
-      throw new Error(created.error?.message ?? "Could not create the account.");
-    }
-
-    const memberId = created.data.user.id;
-    await supabaseAdmin.from("profiles").upsert({
-      id: memberId,
-      agency_id: me.agency_id,
-      full_name: data.fullName,
-      email: data.email,
-      phone: data.phone ?? null,
-      job_title: data.jobTitle ?? null,
-    });
-    const { error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: memberId, role: data.role, agency_id: me.agency_id });
-    if (roleError) throw new Error(roleError.message);
-
-    return { userId: memberId };
+  .handler(async (): Promise<never> => {
+    throw new Error("Adding a member with a password is no longer supported. Use Invite instead.");
   });
 
 /** Super admin: pause or reactivate a whole agency. */

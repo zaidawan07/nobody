@@ -31,7 +31,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createLead, updateLead, fetchAssignableMembers, type LeadRow } from "@/lib/queries";
+import {
+  createLead,
+  updateLead,
+  fetchAssignableMembers,
+  logLeadActivity,
+  type LeadRow,
+} from "@/lib/queries";
+import { LeadTimeline } from "./LeadTimeline";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { parsePkrAmount } from "@/lib/pkr-parser";
 import { useAccess } from "@/hooks/useAccess";
@@ -139,6 +146,26 @@ export function LeadDialog({
       if (lead) {
         await updateLead(lead.id, payload);
         toast.success("Lead updated");
+
+        // Timeline entries for what actually changed, derived from the submitted
+        // values compared to the row we opened with, so a save that changed
+        // nothing records nothing.
+        if (v.status !== (lead.status as string | undefined)) {
+          await logLeadActivity(lead.id, {
+            type: "status_change",
+            body: null,
+            metadata: { from: lead.status ?? null, to: v.status },
+          });
+        }
+        if ((v.assigned_to || null) !== (lead.assigned_to ?? null)) {
+          await logLeadActivity(lead.id, {
+            type: "assignment",
+            body: null,
+            metadata: { to: v.assigned_to || null },
+          });
+        }
+        queryClient.invalidateQueries({ queryKey: ["lead-activities", lead.id] });
+
         if (v.assigned_to && v.assigned_to !== access?.userId) {
           await notify({ data: { event: "lead_assigned", entityId: lead.id } });
         }
@@ -420,6 +447,12 @@ export function LeadDialog({
             </DialogFooter>
           </form>
         </Form>
+        {lead ? (
+          <div className="space-y-2 border-t border-border pt-4">
+            <p className="text-sm font-medium text-foreground">Activity</p>
+            <LeadTimeline leadId={lead.id} />
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

@@ -60,6 +60,71 @@ export type Database = {
         Relationships: [
         ];
       };
+      // TODO(regen): hand-added for migration 0014_team_invitations.sql.
+      // Replace this block by regenerating from the live schema; until then it
+      // is the only source of the new table's types and must stay in sync with
+      // that migration by hand.
+      agency_invitations: {
+        Row: {
+          id: string;
+          agency_id: string;
+          email: string;
+          full_name: string | null;
+          phone: string | null;
+          job_title: string | null;
+          role: Database["public"]["Enums"]["invited_role"];
+          status: Database["public"]["Enums"]["invitation_status"];
+          invited_by: string;
+          expires_at: string;
+          accepted_at: string | null;
+          revoked_at: string | null;
+          revoked_by: string | null;
+          last_sent_at: string | null;
+          send_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          agency_id: string;
+          email: string;
+          full_name?: string | null;
+          phone?: string | null;
+          job_title?: string | null;
+          role?: Database["public"]["Enums"]["invited_role"];
+          status?: Database["public"]["Enums"]["invitation_status"];
+          invited_by: string;
+          expires_at: string;
+          accepted_at?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          last_sent_at?: string | null;
+          send_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          agency_id?: string;
+          email?: string;
+          full_name?: string | null;
+          phone?: string | null;
+          job_title?: string | null;
+          role?: Database["public"]["Enums"]["invited_role"];
+          status?: Database["public"]["Enums"]["invitation_status"];
+          invited_by?: string;
+          expires_at?: string;
+          accepted_at?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          last_sent_at?: string | null;
+          send_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+        ];
+      };
       audit_logs: {
         Row: {
           id: string;
@@ -237,6 +302,90 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+        ];
+      };
+      // TODO(regen): hand-added for 0015_lead_timeline_followups.sql.
+      lead_activities: {
+        Row: {
+          id: string;
+          agency_id: string;
+          lead_id: string;
+          type: Database["public"]["Enums"]["lead_activity_type"];
+          body: string | null;
+          author_id: string | null;
+          metadata: Json;
+          is_system: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          agency_id?: string;
+          lead_id: string;
+          type: Database["public"]["Enums"]["lead_activity_type"];
+          body?: string | null;
+          author_id?: string | null;
+          metadata?: Json;
+          is_system?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          agency_id?: string;
+          lead_id?: string;
+          type?: Database["public"]["Enums"]["lead_activity_type"];
+          body?: string | null;
+          author_id?: string | null;
+          metadata?: Json;
+          is_system?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+        ];
+      };
+      lead_followups: {
+        Row: {
+          id: string;
+          agency_id: string;
+          lead_id: string;
+          due_at: string;
+          note: string | null;
+          status: Database["public"]["Enums"]["followup_status"];
+          assigned_to: string | null;
+          created_by: string | null;
+          completed_at: string | null;
+          cancelled_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          agency_id: string;
+          lead_id: string;
+          due_at: string;
+          note?: string | null;
+          status?: Database["public"]["Enums"]["followup_status"];
+          assigned_to?: string | null;
+          created_by?: string | null;
+          completed_at?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          agency_id?: string;
+          lead_id?: string;
+          due_at?: string;
+          note?: string | null;
+          status?: Database["public"]["Enums"]["followup_status"];
+          assigned_to?: string | null;
+          created_by?: string | null;
+          completed_at?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
         ];
       };
       leads: {
@@ -1174,6 +1323,12 @@ export type Database = {
       subscription_status: "trialing" | "active" | "past_due" | "canceled" | "expired";
       visit_status: "requested" | "confirmed" | "completed" | "cancelled" | "no_show";
       whatsapp_connection_status: "not_connected" | "pending" | "connected" | "error";
+      // TODO(regen): hand-added for 0014_team_invitations.sql.
+      invited_role: "agency_admin" | "employee";
+      invitation_status: "pending" | "accepted" | "revoked" | "expired";
+      // TODO(regen): hand-added for 0015_lead_timeline_followups.sql.
+      lead_activity_type: "note" | "call" | "status_change" | "visit" | "assignment" | "system";
+      followup_status: "open" | "done" | "cancelled";
     };
     CompositeTypes: {
       [_ in never]: never;

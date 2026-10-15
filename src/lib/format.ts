@@ -43,7 +43,7 @@ export const leadStatusLabel: Record<string, string> = {
   new: "New",
   contacted: "Contacted",
   qualified: "Qualified",
-  visit_scheduled: "Visit Scheduled",
+  visit_scheduled: "Visit scheduled",
   negotiating: "Negotiating",
   won: "Converted",
   lost: "Lost",

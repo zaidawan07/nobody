@@ -35,6 +35,8 @@ const files = [
   "drizzle/migrations/0011_property_status_guard.sql",
   "drizzle/migrations/0012_super_admin_no_conversation_access.sql",
   "drizzle/migrations/0013_lock_down_new_function_execute.sql",
+  "drizzle/migrations/0014_team_invitations.sql",
+  "drizzle/migrations/0015_lead_timeline_followups.sql",
   "test/01_seed.sql",
   "test/02_security_tests.sql",
   "test/03_extended_security_tests.sql",
@@ -44,6 +46,8 @@ const files = [
   "test/07_property_status.sql",
   "test/08_super_admin_conversations.sql",
   "test/09_function_lockdown.sql",
+  "test/10_invitations.sql",
+  "test/11_lead_timeline.sql",
 ];
 
 // Split on top-level semicolons while respecting '...', --comments, /* */,

@@ -109,8 +109,8 @@ export const markAllNotificationsRead = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 
 const eventSchema = z.object({
-  event: z.enum(["lead_assigned", "visit_requested"]),
-  /** The lead or visit row the caller just created or reassigned. */
+  event: z.enum(["lead_assigned", "visit_requested", "followup_assigned"]),
+  /** The lead, visit, or follow-up row the caller just created or reassigned. */
   entityId: z.string().uuid(),
 });
 
@@ -146,6 +146,26 @@ export const notifyAssignment = createServerFn({ method: "POST" })
         body: lead.name ?? "A lead",
         entityType: "lead",
         entityId: lead.id,
+      });
+      return { ok: true };
+    }
+
+    if (data.event === "followup_assigned") {
+      const { data: followup } = await supabaseAdmin
+        .from("lead_followups")
+        .select("id, agency_id, assigned_to, due_at, note")
+        .eq("id", data.entityId)
+        .maybeSingle();
+      if (!followup?.assigned_to || !followup.agency_id) return { ok: true };
+      if (followup.assigned_to === context.userId) return { ok: true };
+      await notifyUser(supabaseAdmin, {
+        userId: followup.assigned_to,
+        agencyId: followup.agency_id,
+        type: "followup_assigned",
+        title: "Follow-up assigned to you",
+        body: followup.note ?? "You have a follow-up due",
+        entityType: "lead_followup",
+        entityId: followup.id,
       });
       return { ok: true };
     }
@@ -202,10 +222,7 @@ export interface NotifyInput {
  * that triggered it, and the caller has no way to recover from a notification
  * error anyway. Callers must not depend on the return value for correctness.
  */
-export async function notifyUser(
-  supabaseAdmin: SupabaseClient,
-  input: NotifyInput,
-): Promise<void> {
+export async function notifyUser(supabaseAdmin: SupabaseClient, input: NotifyInput): Promise<void> {
   const row: TablesInsert<"notifications"> = {
     user_id: input.userId,
     agency_id: input.agencyId ?? null,
@@ -217,9 +234,7 @@ export async function notifyUser(
   };
   const { error } = await supabaseAdmin.from("notifications").insert(row);
   if (error) {
-    console.error(
-      `[notifications] could not deliver to ${input.userId}: ${error.message}`,
-    );
+    console.error(`[notifications] could not deliver to ${input.userId}: ${error.message}`);
   }
 }
 

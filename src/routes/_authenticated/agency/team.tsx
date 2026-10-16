@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/select";
 import { fetchTeamMembers, type TeamMember } from "@/lib/queries";
 import {
+  INVITE_LINK_LIFETIME_LABEL,
   inviteTeamMember,
   listInvitations,
   resendInvitation,
@@ -304,8 +305,14 @@ function InviteMemberDialog({ agencyId, onInvited }: { agencyId: string; onInvit
               <CopyLinkButton value={result.actionLink} />
             </div>
             <p className="text-xs text-muted-foreground">
-              Expires {new Date(result.expiresAt).toLocaleString()}. You can resend or revoke it
-              from the pending list below.
+              Send this now: the link stops working when your Supabase project's{" "}
+              <span className="font-medium text-foreground">Email OTP expiration</span> runs out —{" "}
+              <span className="font-medium text-foreground">{INVITE_LINK_LIFETIME_LABEL}</span>. The{" "}
+              <span className="font-medium text-foreground">
+                {new Date(result.expiresAt).toLocaleString()}
+              </span>{" "}
+              date below is only how long this entry stays in the pending list, where you can resend
+              or revoke it.
             </p>
           </div>
 
@@ -488,8 +495,9 @@ function PendingInvites({ agencyId }: { agencyId: string }) {
                 <p className="truncate text-sm font-medium text-foreground">{inv.email}</p>
                 <p className="text-xs text-muted-foreground">
                   {inviteRoleLabels[inv.role] ?? inv.role}
-                  {inv.full_name ? " · " + inv.full_name : ""} · expires{" "}
-                  {new Date(inv.expires_at).toLocaleDateString()}
+                  {inv.full_name ? " · " + inv.full_name : ""} · this record expires{" "}
+                  {new Date(inv.expires_at).toLocaleDateString()} (the link itself follows your
+                  Supabase Email OTP expiration — {INVITE_LINK_LIFETIME_LABEL})
                   {inv.send_count > 1 ? " · sent " + inv.send_count + "x" : ""}
                 </p>
               </div>

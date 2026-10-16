@@ -20,7 +20,20 @@ import { assertPlanLimit } from "@/lib/plan-limits.server";
 // RLS independently refuses cross-agency reads and writes, so this is the
 // second layer, not the only one.
 
+// How long OUR agency_invitations row stays pending before we call it expired.
+// This is bookkeeping for the pending list only -- it is NOT how long the invite
+// LINK lives. The link's real lifetime is Supabase's project setting
+// "Email OTP expiration" (Supabase docs: default 1 hour / 3600s; >86400s is
+// strongly discouraged), which governs invitation links alongside magic links,
+// confirmation and recovery links. Keeping this at 7 days is deliberate: it must
+// be >= the link TTL so a pending row is never revived after the link died.
 const INVITE_TTL_DAYS = 7;
+
+// One place to state the link lifetime for UI copy, so no screen invents its own
+// number. "Supabase default" is honest -- we cannot read the project setting from
+// here, and the app must not imply it can.
+export const INVITE_LINK_LIFETIME_LABEL =
+  "1 hour by default (Supabase project setting: Email OTP expiration)";
 
 // Env names that mean "a mail transport exists". Names only, never values.
 // Exported because provisionAgency runs the identical "did we actually send?"

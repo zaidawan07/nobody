@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { CopyLinkButton } from "@/components/shared/CopyLinkButton";
 import { EmptyState, StatusBadge } from "@/components/shared/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,30 +235,6 @@ const inviteRoleLabels: Record<string, string> = {
   agency_admin: "Admin",
   employee: "Employee",
 };
-
-/** Copy-to-clipboard button for a value that must never be shown in full. */
-function CopyLinkButton({ value }: { value: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setDone(true);
-          toast.success("Link copied");
-          setTimeout(() => setDone(false), 2000);
-        } catch {
-          toast.error("Couldn't copy. Select the link and copy it manually.");
-        }
-      }}
-    >
-      {done ? <CheckCircle2 className="size-4" /> : "Copy"}
-    </Button>
-  );
-}
 
 function InviteMemberDialog({ agencyId, onInvited }: { agencyId: string; onInvited: () => void }) {
   const invite = useServerFn(inviteTeamMember);

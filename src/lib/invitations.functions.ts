@@ -23,7 +23,11 @@ import { assertPlanLimit } from "@/lib/plan-limits.server";
 const INVITE_TTL_DAYS = 7;
 
 // Env names that mean "a mail transport exists". Names only, never values.
-const emailConfigured = () => Boolean(process.env["SMTP_HOST"] || process.env["RESEND_API_KEY"]);
+// Exported because provisionAgency runs the identical "did we actually send?"
+// check for a brand-new agency's first admin; keeping one definition means a
+// change to the transport env names cannot split the two flows apart.
+export const emailConfigured = () =>
+  Boolean(process.env["SMTP_HOST"] || process.env["RESEND_API_KEY"]);
 
 const inviteSchema = z.object({
   email: z.string().email(),

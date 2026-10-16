@@ -1,8 +1,20 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { assertPlanLimit } from "@/lib/plan-limits.server";
+import { emailConfigured } from "@/lib/invitations.functions";
 
+// Agency creation.
+//
+// The platform owner never chooses -- or sees -- a password for the person
+// running the new agency. provisionAgency issues an invite link instead, the
+// same way inviteTeamMember does for a colleague, so there is exactly one way
+// an account is created in this product.
+//
+// assertPlanLimit is absent on purpose, not by omission. plan_limit_for_agency
+// reads a subscription row a brand-new agency does not have yet, so it returns
+// null (unconstrained) and the call would be a no-op today -- but it is also
+// the one call that could make the first admin uncreatable, which would leave
+// a tenant nobody can administer. The first admin must always be creatable.
 const agencySchema = z.object({
   agencyName: z.string().min(2),
   city: z.string().optional(),
@@ -10,7 +22,6 @@ const agencySchema = z.object({
   whatsappNumber: z.string().optional(),
   adminName: z.string().min(2),
   adminEmail: z.string().email(),
-  adminPassword: z.string().min(8),
 });
 
 // The invited role. Deliberately the same two-value union the invitation table
@@ -58,31 +69,61 @@ export const provisionAgency = createServerFn({ method: "POST" })
     });
     if (configError) throw new Error(configError.message);
 
-    const created = await supabaseAdmin.auth.admin.createUser({
-      email: data.adminEmail,
-      password: data.adminPassword,
-      email_confirm: true,
-      user_metadata: { full_name: data.adminName },
-    });
-    if (created.error || !created.data.user) {
+    // Nothing exists yet, so a failed admin means the whole tenant goes away
+    // again rather than sitting there with no one able to open it.
+    const rollback = async () => {
       await supabaseAdmin.from("agencies").delete().eq("id", agency.id);
-      throw new Error(created.error?.message ?? "Could not create the admin account.");
+    };
+
+    // generateLink({ type: "invite" }) creates the user AND returns
+    // action_link without sending anything, so the credential is ours to hand
+    // over once (verified: @supabase/auth-js GoTrueAdminApi.d.ts:249).
+    const invite = await supabaseAdmin.auth.admin.generateLink({
+      type: "invite",
+      email: data.adminEmail,
+      options: { redirectTo: "/accept-invitation" },
+    });
+    const adminId = invite.data?.user?.id;
+    const actionLink = invite.data?.properties?.action_link;
+    if (invite.error || !adminId || !actionLink) {
+      await rollback();
+      throw new Error(invite.error?.message ?? "Could not issue the first admin's invitation.");
     }
 
-    const adminId = created.data.user.id;
-    await supabaseAdmin.from("profiles").upsert({
+    const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
       id: adminId,
       agency_id: agency.id,
       full_name: data.adminName,
       email: data.adminEmail,
       job_title: "Agency Admin",
     });
+    if (profileError) {
+      await rollback();
+      throw new Error(profileError.message);
+    }
+
     const { error: roleError } = await supabaseAdmin
       .from("user_roles")
       .insert({ user_id: adminId, role: "agency_admin", agency_id: agency.id });
-    if (roleError) throw new Error(roleError.message);
+    if (roleError) {
+      await rollback();
+      throw new Error(roleError.message);
+    }
 
-    return { agencyId: agency.id };
+    // Email only when a transport exists -- the same rule as
+    // inviteTeamMember, so we never claim a message was sent that was not.
+    // With none configured this is copy-and-share, and the dialog says so.
+    let emailSent = false;
+    let emailError: string | null = null;
+    if (emailConfigured()) {
+      const byEmail = await supabaseAdmin.auth.admin.inviteUserByEmail(data.adminEmail, {
+        redirectTo: "/accept-invitation",
+      });
+      if (byEmail.error) emailError = byEmail.error.message;
+      else emailSent = true;
+    }
+
+    return { agencyId: agency.id, actionLink, emailSent, emailError };
   });
 
 /**

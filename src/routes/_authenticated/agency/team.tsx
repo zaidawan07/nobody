@@ -5,7 +5,15 @@ import { useServerFn } from "@tanstack/react-start";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Users, Plus, Loader2, AlertCircle, PauseCircle, PlayCircle } from "lucide-react";
+import {
+  Users,
+  Plus,
+  Loader2,
+  AlertCircle,
+  PauseCircle,
+  PlayCircle,
+  CheckCircle2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState, StatusBadge } from "@/components/shared/ui";
@@ -38,6 +46,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { fetchTeamMembers, type TeamMember } from "@/lib/queries";
 import {
   inviteTeamMember,

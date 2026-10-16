@@ -65,9 +65,26 @@ export const createLeadFollowup = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
+    // Unlike lead_activities, lead_followups has no BEFORE INSERT trigger to
+    // derive the tenant (0015 only guards lead_activities.is_system). agency_id
+    // is NOT NULL with no default, so an insert that omits it is rejected by
+    // the column before RLS ever runs. Read it from the lead instead of
+    // accepting it from the caller: leads SELECT is itself RLS-bound through
+    // can_access_assigned_record, so a lead the caller may not touch simply
+    // comes back empty here, and the "assigned insert lead_followups" WITH
+    // CHECK re-verifies the pair anyway.
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .select("id, agency_id")
+      .eq("id", data.leadId)
+      .maybeSingle();
+    if (leadError) throw new Error(leadError.message);
+    if (!lead) throw new Error("You do not have access to this lead.");
+
     const { data: row, error } = await supabase
       .from("lead_followups")
       .insert({
+        agency_id: lead.agency_id,
         lead_id: data.leadId,
         due_at: data.dueAt,
         note: data.note ?? null,

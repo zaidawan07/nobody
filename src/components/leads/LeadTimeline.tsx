@@ -42,8 +42,9 @@ function fmtWhen(iso: string) {
 /** Renders the structured part of a status_change or assignment entry. */
 function describeChange(row: ActivityRow): string | null {
   const meta = (row.metadata ?? {}) as Record<string, unknown>;
-  const from = typeof meta.from === "string" ? meta.from : null;
-  const to = typeof meta.to === "string" ? meta.to : null;
+  // Bracket notation: noPropertyAccessFromIndexSignature forbids meta.from.
+  const from = typeof meta["from"] === "string" ? meta["from"] : null;
+  const to = typeof meta["to"] === "string" ? meta["to"] : null;
   if (row.type === "status_change" && (from || to)) {
     return `${from ?? "unset"} → ${to ?? "unset"}`;
   }

@@ -90,8 +90,15 @@ function countBy(rows: { agency_id: string | null }[]): Record<string, number> {
   return out;
 }
 
+export interface AgencyDetailMember extends Pick<
+  Tables<"profiles">,
+  "id" | "full_name" | "email" | "status"
+> {
+  role: Tables<"user_roles">["role"] | null;
+}
+
 export interface AgencyDetail extends Tables<"agencies"> {
-  members: Pick<Tables<"profiles">, "id" | "full_name" | "email" | "status">[];
+  members: AgencyDetailMember[];
   propertyCount: number;
   leadCount: number;
 }
@@ -100,6 +107,7 @@ export async function fetchAgencyDetail(agencyId: string): Promise<AgencyDetail 
   const [
     { data: agency, error },
     { data: members, error: membersError },
+    { data: roles, error: rolesError },
     { data: properties, error: propertiesError },
     { data: leads, error: leadsError },
   ] = await Promise.all([
@@ -109,18 +117,24 @@ export async function fetchAgencyDetail(agencyId: string): Promise<AgencyDetail 
       .select("id, full_name, email, status")
       .eq("agency_id", agencyId)
       .order("full_name"),
+    supabase.from("user_roles").select("user_id, role").eq("agency_id", agencyId),
     supabase.from("properties").select("id").eq("agency_id", agencyId),
     supabase.from("leads").select("id").eq("agency_id", agencyId),
   ]);
   if (error) throw error;
   if (membersError) throw membersError;
+  if (rolesError) throw rolesError;
   if (propertiesError) throw propertiesError;
   if (leadsError) throw leadsError;
   if (!agency) return null;
 
+  // Role comes from user_roles, not profiles (there is no profiles.role column),
+  // so the page can tell a pending agency admin from a pending employee.
+  const roleByUser = new Map((roles ?? []).map((r) => [r.user_id, r.role]));
+
   return {
     ...agency,
-    members: members ?? [],
+    members: (members ?? []).map((m) => ({ ...m, role: roleByUser.get(m.id) ?? null })),
     propertyCount: properties?.length ?? 0,
     leadCount: leads?.length ?? 0,
   };

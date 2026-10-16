@@ -14,11 +14,15 @@ import {
   MessageSquare,
   DollarSign,
   TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge, EmptyState } from "@/components/shared/ui";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CopyLinkButton } from "@/components/shared/CopyLinkButton";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -29,7 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { fetchAgencyDetail } from "@/lib/queries";
-import { setAgencyStatus } from "@/lib/provisioning.functions";
+import { setAgencyStatus, reissueFirstAdminLink } from "@/lib/provisioning.functions";
 import { AgencyUsageOverview } from "@/components/platform/AgencyUsageOverview";
 
 export const Route = createFileRoute("/_authenticated/platform/agencies/$agencyId")({
@@ -41,12 +45,37 @@ function AgencyDetailPage() {
   const { agencyId } = Route.useParams();
   const queryClient = useQueryClient();
   const updateStatus = useServerFn(setAgencyStatus);
+  const reissueAdminLink = useServerFn(reissueFirstAdminLink);
   const [updating, setUpdating] = useState(false);
+  const [reissuing, setReissuing] = useState<string | null>(null);
+  const [freshLink, setFreshLink] = useState<{
+    email: string;
+    actionLink: string;
+    emailSent: boolean;
+  } | null>(null);
 
   const { data: agency, isLoading } = useQuery({
     queryKey: ["agency-detail", agencyId],
     queryFn: () => fetchAgencyDetail(agencyId),
   });
+
+  async function reissue(profileId: string, email: string | null) {
+    setReissuing(profileId);
+    setFreshLink(null);
+    try {
+      const out = await reissueAdminLink({ data: { agencyId, profileId } });
+      setFreshLink({
+        email: email ?? "(no email)",
+        actionLink: out.actionLink,
+        emailSent: out.emailSent,
+      });
+      toast.success(out.emailSent ? "New link created and emailed" : "New link created");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create a new link.");
+    } finally {
+      setReissuing(null);
+    }
+  }
 
   async function toggleStatus() {
     if (!agency) return;
@@ -164,24 +193,81 @@ function AgencyDetailPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {agency.members.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell className="font-medium text-foreground">
-                      {m.full_name ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{m.email ?? "—"}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={m.status} />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {agency.members.map((m) => {
+                  // Only a pending AGENCY ADMIN has no invitation row to resend
+                  // from the team screen, so this is the one case this button
+                  // exists for. Employees are handled by the team screen.
+                  const canReissue = m.status === "pending" && m.role === "agency_admin";
+                  return (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium text-foreground">
+                        {m.full_name ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{m.email ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {m.role === "agency_admin"
+                          ? "Admin"
+                          : m.role === "employee"
+                            ? "Employee"
+                            : m.role === "super_admin"
+                              ? "Platform owner"
+                              : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={m.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {canReissue ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => reissue(m.id, m.email)}
+                            disabled={reissuing === m.id}
+                          >
+                            {reissuing === m.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="size-4" />
+                            )}
+                            Re-issue link
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
+
+          {freshLink ? (
+            <div className="border-t border-border p-4">
+              <Alert>
+                <AlertDescription className="space-y-2">
+                  <p className="text-sm">
+                    New sign-in link for {freshLink.email}.{" "}
+                    {freshLink.emailSent
+                      ? "It was also emailed."
+                      : "No email was sent — copy it and share it yourself."}{" "}
+                    It stops working when the project&apos;s Supabase Email OTP expiration runs out
+                    (1 hour by default), so send it now.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input readOnly value={freshLink.actionLink} className="font-mono text-xs" />
+                    <CopyLinkButton value={freshLink.actionLink} />
+                  </div>
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : null}
         </div>
       </div>
     </AppShell>

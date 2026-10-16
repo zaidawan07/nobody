@@ -182,6 +182,84 @@ export const setAgencyStatus = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/**
+ * Super admin: re-issue a fresh invite link for a pending first admin.
+ *
+ * Why this exists: the first admin's account is created by provisionAgency via
+ * generateLink, but -- unlike a team invitation -- it has NO agency_invitations
+ * row, so the team screen cannot list/resend/revoke it. The link is governed by
+ * Supabase's "Email OTP expiration" (1 hour by default), so it very often needs
+ * re-issuing before it is ever accepted. This gives the platform owner that one
+ * action, from the agency detail page, without inventing an invitation row.
+ *
+ * Scope is deliberately narrow: the target must belong to the given agency, be
+ * an agency_admin, and still be pending (never accepted / never suspended). A
+ * super admin's own account and ordinary employees are refused.
+ */
+const reissueSchema = z.object({
+  agencyId: z.string().uuid(),
+  profileId: z.string().uuid(),
+});
+
+export const reissueFirstAdminLink = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(reissueSchema)
+  .handler(async ({ data, context }) => {
+    await assertRole(context.supabase as never, context.userId, "super_admin");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, agency_id, email, status")
+      .eq("id", data.profileId)
+      .maybeSingle();
+    if (profileError) throw new Error(profileError.message);
+    if (!profile) throw new Error("Member not found.");
+    if (profile.agency_id !== data.agencyId) {
+      throw new Error("That member does not belong to this agency.");
+    }
+    if (profile.status !== "pending") {
+      throw new Error("That admin is no longer pending, so a new link is not needed.");
+    }
+    if (!profile.email) throw new Error("That member has no email address on file.");
+
+    // Must be the agency admin, not an employee. Roles live in user_roles.
+    const { data: role, error: roleLookupError } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", data.profileId)
+      .eq("agency_id", data.agencyId)
+      .eq("role", "agency_admin")
+      .maybeSingle();
+    if (roleLookupError) throw new Error(roleLookupError.message);
+    if (!role) throw new Error("Only a pending agency admin can be re-issued a link.");
+
+    // Same mechanism as inviteTeamMember / resendInvitation: generate the link
+    // without sending, so the platform owner can hand it over however they like.
+    const fresh = await supabaseAdmin.auth.admin.generateLink({
+      type: "invite",
+      email: profile.email,
+      options: { redirectTo: "/accept-invitation" },
+    });
+    const actionLink = fresh.data?.properties?.action_link;
+    if (fresh.error || !actionLink) {
+      throw new Error(fresh.error?.message ?? "Could not create a new invitation link.");
+    }
+
+    // Email only when a transport exists, and never claim it was sent otherwise.
+    let emailSent = false;
+    let emailError: string | null = null;
+    if (emailConfigured()) {
+      const byEmail = await supabaseAdmin.auth.admin.inviteUserByEmail(profile.email, {
+        redirectTo: "/accept-invitation",
+      });
+      if (byEmail.error) emailError = byEmail.error.message;
+      else emailSent = true;
+    }
+
+    return { actionLink, emailSent, emailError };
+  });
+
 const memberStatusSchema = z.object({
   profileId: z.string().uuid(),
   status: z.enum(["active", "suspended"]),

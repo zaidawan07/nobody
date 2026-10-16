@@ -15,6 +15,12 @@ import { emailConfigured } from "@/lib/invitations.functions";
 // null (unconstrained) and the call would be a no-op today -- but it is also
 // the one call that could make the first admin uncreatable, which would leave
 // a tenant nobody can administer. The first admin must always be creatable.
+//
+// Pending: drizzle/migrations/0016_no_subscription_uses_free_plan.sql makes a
+// missing subscription behave as Free plan limits instead of unlimited. It is
+// written but NOT applied, so it changes nothing yet. Once applied this comment
+// becomes stale in one direction only: the Free plan's team_members cap is 2,
+// and the first admin is 1, so the first admin stays creatable either way.
 const agencySchema = z.object({
   agencyName: z.string().min(2),
   city: z.string().optional(),
@@ -71,7 +77,22 @@ export const provisionAgency = createServerFn({ method: "POST" })
 
     // Nothing exists yet, so a failed admin means the whole tenant goes away
     // again rather than sitting there with no one able to open it.
+    //
+    // Rollback also has to remove the AUTH user generateLink just created.
+    // goTrue keeps its own users row outside this schema, so deleting only the
+    // tenant rows would leave an auth account that still "owns" the email --
+    // the next attempt would then fail with "already registered" and the
+    // agency could never be re-provisioned. Only an id we are certain came
+    // from THIS call's generateLink is deleted; a failure before that point
+    // never touches an existing account.
+    let createdAuthUserId: string | null = null;
     const rollback = async () => {
+      if (createdAuthUserId) {
+        await supabaseAdmin.auth.admin.deleteUser(createdAuthUserId).catch(() => {
+          // Best effort: the tenant rows below still get removed. Surfacing a
+          // delete error here would mask the original failure.
+        });
+      }
       await supabaseAdmin.from("agencies").delete().eq("id", agency.id);
     };
 
@@ -85,6 +106,11 @@ export const provisionAgency = createServerFn({ method: "POST" })
     });
     const adminId = invite.data?.user?.id;
     const actionLink = invite.data?.properties?.action_link;
+    // generateLink succeeded => goTrue created this user in THIS call, so it is
+    // ours to delete on rollback. When invite.error is set, no user was created
+    // by us (an already-registered email is the common case), so the id is never
+    // captured and an existing account is left untouched.
+    if (!invite.error && adminId) createdAuthUserId = adminId;
     if (invite.error || !adminId || !actionLink) {
       await rollback();
       throw new Error(invite.error?.message ?? "Could not issue the first admin's invitation.");

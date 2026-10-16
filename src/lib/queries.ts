@@ -1093,3 +1093,309 @@ export async function fetchVisits(agencyId: string): Promise<VisitRow[]> {
     lead_name: r.lead_id ? (leads.get(r.lead_id) ?? null) : null,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Reports
+//
+// One snapshot built entirely from RLS-scoped reads. The same call answers
+// "the whole agency" for an agency_admin and "just me" for an employee:
+// can_access_assigned_record (0001) does that narrowing, not a filter here and
+// not an id handed in by the page. Nothing below re-derives access -- it only
+// counts what Postgres already agreed to return.
+// ---------------------------------------------------------------------------
+
+export interface ReportCount {
+  key: string;
+  count: number;
+}
+
+export interface ReportWeek {
+  /** Local YYYY-MM-DD of that week's Monday. */
+  weekStart: string;
+  count: number;
+}
+
+export interface ReportWorkloadRow {
+  /** null is the "nobody assigned" bucket, which only an admin can see. */
+  id: string | null;
+  name: string;
+  leads: number;
+  properties: number;
+  visits: number;
+}
+
+export interface ReportSnapshot {
+  leads: {
+    total: number;
+    byStatus: ReportCount[];
+    won: number;
+    lost: number;
+    open: number;
+    /** won / (won + lost). null when no lead has reached either yet, so the
+     *  UI can say "not enough data" instead of printing 0% or NaN. */
+    conversion: number | null;
+  };
+  properties: {
+    total: number;
+    byStatus: ReportCount[];
+    byType: ReportCount[];
+  };
+  visits: {
+    total: number;
+    /** Oldest first, one entry per week, zero-filled for quiet weeks. */
+    weeks: ReportWeek[];
+    /** Visible visits outside the chart window. total === sum(weeks) + this,
+     *  so the chart can never silently disagree with the headline number. */
+    notInWindow: number;
+  };
+  workload: {
+    /** True when every active member is listed; false when it is the caller
+     *  alone. An employee cannot see a colleague's rows, so echoing them as
+     *  zeros would assert something we cannot know. */
+    complete: boolean;
+    rows: ReportWorkloadRow[];
+  };
+}
+
+// Exhaustive by construction: a Record keyed by the DB enum stops compiling the
+// moment a migration adds a status, so a stage can never be silently dropped
+// from a "complete" list or rendered as a misleading zero.
+const LEAD_STATUS_ORDER: Record<Tables<"leads">["status"], number> = {
+  new: 0,
+  contacted: 1,
+  qualified: 2,
+  visit_scheduled: 3,
+  negotiating: 4,
+  won: 5,
+  lost: 6,
+};
+
+const PROPERTY_STATUS_ORDER: Record<Tables<"properties">["status"], number> = {
+  available: 0,
+  reserved: 1,
+  sold: 2,
+  rented: 3,
+  inactive: 4,
+  draft: 5,
+  unavailable: 6,
+  expired: 7,
+};
+
+const PROPERTY_TYPE_ORDER: Record<Tables<"properties">["property_type"], number> = {
+  house: 0,
+  apartment: 1,
+  plot: 2,
+  commercial: 3,
+  office: 4,
+  shop: 5,
+  warehouse: 6,
+  agricultural: 7,
+};
+
+const REPORT_WEEKS = 8;
+
+function countEnumValues<T extends string>(
+  order: Record<T, number>,
+  values: (string | null)[],
+): ReportCount[] {
+  const counts = new Map<string, number>();
+  for (const v of values) {
+    if (v === null) continue;
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  const known = (Object.keys(order) as string[]).sort((a, b) => order[a as T] - order[b as T]);
+  // Anything the enum in types.ts does not list still gets counted, last, so
+  // the rows always add up to the total even if that file is stale.
+  const unknown = [...counts.keys()].filter((k) => !(k in order)).sort();
+  return [...known, ...unknown].map((key) => ({ key, count: counts.get(key) ?? 0 }));
+}
+
+function localDateKey(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** Midnight local time on the Monday of the week containing `d`. */
+function mondayOf(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+/**
+ * Counts for the reports page.
+ *
+ * `scope` only shapes how the workload table is grouped; it is NOT an access
+ * control. RLS has already decided which rows come back, so a wrong scope can
+ * mislabel a table but cannot reveal another tenant's or another employee's
+ * records.
+ */
+export async function fetchReportSnapshot(
+  agencyId: string,
+  scope: { kind: "agency" } | { kind: "self"; userId: string },
+): Promise<ReportSnapshot> {
+  const [
+    { data: leadRows, error: lErr },
+    { data: propertyRows, error: pErr },
+    { data: visitRows, error: vErr },
+    { data: members, error: mErr },
+  ] = await Promise.all([
+    supabase.from("leads").select("status, assigned_to").eq("agency_id", agencyId),
+    supabase
+      .from("properties")
+      .select("status, property_type, assigned_to")
+      .eq("agency_id", agencyId),
+    supabase.from("site_visits").select("created_at, assigned_to").eq("agency_id", agencyId),
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("agency_id", agencyId)
+      .eq("status", "active")
+      .order("full_name"),
+  ]);
+  if (lErr) throw lErr;
+  if (pErr) throw pErr;
+  if (vErr) throw vErr;
+  if (mErr) throw mErr;
+
+  const leads = leadRows ?? [];
+  const properties = propertyRows ?? [];
+  const visits = visitRows ?? [];
+
+  // --- leads ---
+  const byStatus = countEnumValues(
+    LEAD_STATUS_ORDER,
+    leads.map((r) => r.status),
+  );
+  const won = leads.filter((r) => r.status === "won").length;
+  const lost = leads.filter((r) => r.status === "lost").length;
+
+  // --- properties ---
+  const propertiesByStatus = countEnumValues(
+    PROPERTY_STATUS_ORDER,
+    properties.map((r) => r.status),
+  );
+  const propertiesByType = countEnumValues(
+    PROPERTY_TYPE_ORDER,
+    properties.map((r) => r.property_type),
+  );
+
+  // --- visits per week ---
+  const thisMonday = mondayOf(new Date());
+  const windowStart = new Date(thisMonday);
+  windowStart.setDate(windowStart.getDate() - 7 * (REPORT_WEEKS - 1));
+  const perWeek = new Map<string, number>();
+  for (let i = 0; i < REPORT_WEEKS; i++) {
+    const d = new Date(windowStart);
+    d.setDate(d.getDate() + i * 7);
+    perWeek.set(localDateKey(d), 0);
+  }
+  let notInWindow = 0;
+  for (const v of visits) {
+    const key = localDateKey(mondayOf(new Date(v.created_at)));
+    if (perWeek.has(key)) perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
+    else notInWindow += 1;
+  }
+  const weeks: ReportWeek[] = [...perWeek.entries()].map(([weekStart, count]) => ({
+    weekStart,
+    count,
+  }));
+
+  // --- workload ---
+  const wholeTeam = scope.kind === "agency";
+  const nameById = new Map<string, string>();
+  if (wholeTeam) {
+    for (const m of members ?? []) nameById.set(m.id, m.full_name ?? "Unnamed member");
+    // Assignees the active-member list does not cover (someone deactivated
+    // while still owning records) are looked up, so they show up under their
+    // own name rather than being folded into "Unassigned".
+    const missing = [
+      ...new Set(
+        [...leads, ...properties, ...visits]
+          .map((r) => r.assigned_to)
+          .filter((id): id is string => id !== null && !nameById.has(id)),
+      ),
+    ];
+    if (missing.length > 0) {
+      for (const [id, name] of await idsToMap("profiles", "full_name", missing)) {
+        nameById.set(id, name);
+      }
+    }
+  } else {
+    nameById.set(scope.userId, "You");
+  }
+
+  const buckets = new Map<string | null, ReportWorkloadRow>();
+  const seed = (id: string | null): ReportWorkloadRow => {
+    const existing = buckets.get(id);
+    if (existing) return existing;
+    const created: ReportWorkloadRow = {
+      id,
+      name: id === null ? "Unassigned" : (nameById.get(id) ?? "Unknown member"),
+      leads: 0,
+      properties: 0,
+      visits: 0,
+    };
+    buckets.set(id, created);
+    return created;
+  };
+
+  if (wholeTeam) for (const m of members ?? []) seed(m.id);
+  else seed(scope.userId);
+
+  // Seeding the whole team is what lets an admin see a colleague with nothing
+  // assigned; in self scope every other assignee is dropped, which is exactly
+  // the rows RLS never returned in the first place.
+  const bucketFor = (id: string | null): ReportWorkloadRow | null =>
+    wholeTeam || id === scope.userId ? seed(id) : null;
+
+  for (const r of leads) {
+    const row = bucketFor(r.assigned_to);
+    if (row) row.leads += 1;
+  }
+  for (const r of properties) {
+    const row = bucketFor(r.assigned_to);
+    if (row) row.properties += 1;
+  }
+  for (const r of visits) {
+    const row = bucketFor(r.assigned_to);
+    if (row) row.visits += 1;
+  }
+
+  const rows = [...buckets.values()].sort((a, b) => {
+    // "Unassigned" is a backlog, not a person: always last.
+    if (a.id === null) return 1;
+    if (b.id === null) return -1;
+    const ta = a.leads + a.properties + a.visits;
+    const tb = b.leads + b.properties + b.visits;
+    if (tb !== ta) return tb - ta;
+    return a.name.localeCompare(b.name);
+  });
+
+  return {
+    leads: {
+      total: leads.length,
+      byStatus,
+      won,
+      lost,
+      open: leads.length - won - lost,
+      conversion: won + lost === 0 ? null : won / (won + lost),
+    },
+    properties: {
+      total: properties.length,
+      byStatus: propertiesByStatus,
+      byType: propertiesByType,
+    },
+    visits: {
+      total: visits.length,
+      weeks,
+      notInWindow,
+    },
+    workload: {
+      complete: wholeTeam,
+      rows,
+    },
+  };
+}

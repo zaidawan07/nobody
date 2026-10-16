@@ -25,6 +25,7 @@ import { Route as AuthSignupRouteImport } from './routes/auth/signup'
 import { Route as AuthenticatedAgencyIndexRouteImport } from './routes/_authenticated/agency/index'
 import { Route as AuthenticatedAgencyAiRouteImport } from './routes/_authenticated/agency/ai'
 import { Route as AuthenticatedAgencyLeadsRouteImport } from './routes/_authenticated/agency/leads'
+import { Route as AuthenticatedAgencyReportsRouteImport } from './routes/_authenticated/agency/reports'
 import { Route as AuthenticatedAgencySettingsRouteImport } from './routes/_authenticated/agency/settings'
 import { Route as AuthenticatedAgencySubscriptionRouteImport } from './routes/_authenticated/agency/subscription'
 import { Route as AuthenticatedAgencyTeamRouteImport } from './routes/_authenticated/agency/team'
@@ -33,6 +34,7 @@ import { Route as AuthenticatedAgencyWhatsappRouteImport } from './routes/_authe
 import { Route as AuthenticatedEmployeeIndexRouteImport } from './routes/_authenticated/employee/index'
 import { Route as AuthenticatedEmployeeLeadsRouteImport } from './routes/_authenticated/employee/leads'
 import { Route as AuthenticatedEmployeeProfileRouteImport } from './routes/_authenticated/employee/profile'
+import { Route as AuthenticatedEmployeeReportsRouteImport } from './routes/_authenticated/employee/reports'
 import { Route as AuthenticatedEmployeeVisitsRouteImport } from './routes/_authenticated/employee/visits'
 import { Route as AuthenticatedPlatformIndexRouteImport } from './routes/_authenticated/platform/index'
 import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authenticated/platform/plans'
@@ -133,6 +135,12 @@ const AuthenticatedAgencyLeadsRoute =
     path: '/leads',
     getParentRoute: () => AuthenticatedAgencyRouteRoute,
   } as any)
+const AuthenticatedAgencyReportsRoute =
+  AuthenticatedAgencyReportsRouteImport.update({
+    id: '/reports',
+    path: '/reports',
+    getParentRoute: () => AuthenticatedAgencyRouteRoute,
+  } as any)
 const AuthenticatedAgencySettingsRoute =
   AuthenticatedAgencySettingsRouteImport.update({
     id: '/settings',
@@ -178,6 +186,12 @@ const AuthenticatedEmployeeProfileRoute =
   AuthenticatedEmployeeProfileRouteImport.update({
     id: '/profile',
     path: '/profile',
+    getParentRoute: () => AuthenticatedEmployeeRouteRoute,
+  } as any)
+const AuthenticatedEmployeeReportsRoute =
+  AuthenticatedEmployeeReportsRouteImport.update({
+    id: '/reports',
+    path: '/reports',
     getParentRoute: () => AuthenticatedEmployeeRouteRoute,
   } as any)
 const AuthenticatedEmployeeVisitsRoute =
@@ -279,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/auth/': typeof AuthIndexRoute
   '/agency/ai': typeof AuthenticatedAgencyAiRoute
   '/agency/leads': typeof AuthenticatedAgencyLeadsRoute
+  '/agency/reports': typeof AuthenticatedAgencyReportsRoute
   '/agency/settings': typeof AuthenticatedAgencySettingsRoute
   '/agency/subscription': typeof AuthenticatedAgencySubscriptionRoute
   '/agency/team': typeof AuthenticatedAgencyTeamRoute
@@ -286,6 +301,7 @@ export interface FileRoutesByFullPath {
   '/agency/whatsapp': typeof AuthenticatedAgencyWhatsappRoute
   '/employee/leads': typeof AuthenticatedEmployeeLeadsRoute
   '/employee/profile': typeof AuthenticatedEmployeeProfileRoute
+  '/employee/reports': typeof AuthenticatedEmployeeReportsRoute
   '/employee/visits': typeof AuthenticatedEmployeeVisitsRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
@@ -314,6 +330,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthIndexRoute
   '/agency/ai': typeof AuthenticatedAgencyAiRoute
   '/agency/leads': typeof AuthenticatedAgencyLeadsRoute
+  '/agency/reports': typeof AuthenticatedAgencyReportsRoute
   '/agency/settings': typeof AuthenticatedAgencySettingsRoute
   '/agency/subscription': typeof AuthenticatedAgencySubscriptionRoute
   '/agency/team': typeof AuthenticatedAgencyTeamRoute
@@ -321,6 +338,7 @@ export interface FileRoutesByTo {
   '/agency/whatsapp': typeof AuthenticatedAgencyWhatsappRoute
   '/employee/leads': typeof AuthenticatedEmployeeLeadsRoute
   '/employee/profile': typeof AuthenticatedEmployeeProfileRoute
+  '/employee/reports': typeof AuthenticatedEmployeeReportsRoute
   '/employee/visits': typeof AuthenticatedEmployeeVisitsRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
@@ -355,6 +373,7 @@ export interface FileRoutesById {
   '/auth/': typeof AuthIndexRoute
   '/_authenticated/agency/ai': typeof AuthenticatedAgencyAiRoute
   '/_authenticated/agency/leads': typeof AuthenticatedAgencyLeadsRoute
+  '/_authenticated/agency/reports': typeof AuthenticatedAgencyReportsRoute
   '/_authenticated/agency/settings': typeof AuthenticatedAgencySettingsRoute
   '/_authenticated/agency/subscription': typeof AuthenticatedAgencySubscriptionRoute
   '/_authenticated/agency/team': typeof AuthenticatedAgencyTeamRoute
@@ -362,6 +381,7 @@ export interface FileRoutesById {
   '/_authenticated/agency/whatsapp': typeof AuthenticatedAgencyWhatsappRoute
   '/_authenticated/employee/leads': typeof AuthenticatedEmployeeLeadsRoute
   '/_authenticated/employee/profile': typeof AuthenticatedEmployeeProfileRoute
+  '/_authenticated/employee/reports': typeof AuthenticatedEmployeeReportsRoute
   '/_authenticated/employee/visits': typeof AuthenticatedEmployeeVisitsRoute
   '/_authenticated/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
@@ -396,6 +416,7 @@ export interface FileRouteTypes {
     | '/auth/'
     | '/agency/ai'
     | '/agency/leads'
+    | '/agency/reports'
     | '/agency/settings'
     | '/agency/subscription'
     | '/agency/team'
@@ -403,6 +424,7 @@ export interface FileRouteTypes {
     | '/agency/whatsapp'
     | '/employee/leads'
     | '/employee/profile'
+    | '/employee/reports'
     | '/employee/visits'
     | '/platform/plans'
     | '/platform/settings'
@@ -431,6 +453,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/agency/ai'
     | '/agency/leads'
+    | '/agency/reports'
     | '/agency/settings'
     | '/agency/subscription'
     | '/agency/team'
@@ -438,6 +461,7 @@ export interface FileRouteTypes {
     | '/agency/whatsapp'
     | '/employee/leads'
     | '/employee/profile'
+    | '/employee/reports'
     | '/employee/visits'
     | '/platform/plans'
     | '/platform/settings'
@@ -471,6 +495,7 @@ export interface FileRouteTypes {
     | '/auth/'
     | '/_authenticated/agency/ai'
     | '/_authenticated/agency/leads'
+    | '/_authenticated/agency/reports'
     | '/_authenticated/agency/settings'
     | '/_authenticated/agency/subscription'
     | '/_authenticated/agency/team'
@@ -478,6 +503,7 @@ export interface FileRouteTypes {
     | '/_authenticated/agency/whatsapp'
     | '/_authenticated/employee/leads'
     | '/_authenticated/employee/profile'
+    | '/_authenticated/employee/reports'
     | '/_authenticated/employee/visits'
     | '/_authenticated/platform/plans'
     | '/_authenticated/platform/settings'
@@ -618,6 +644,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgencyLeadsRouteImport
       parentRoute: typeof AuthenticatedAgencyRouteRoute
     }
+    '/_authenticated/agency/reports': {
+      id: '/_authenticated/agency/reports'
+      path: '/reports'
+      fullPath: '/agency/reports'
+      preLoaderRoute: typeof AuthenticatedAgencyReportsRouteImport
+      parentRoute: typeof AuthenticatedAgencyRouteRoute
+    }
     '/_authenticated/agency/settings': {
       id: '/_authenticated/agency/settings'
       path: '/settings'
@@ -672,6 +705,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/employee/profile'
       preLoaderRoute: typeof AuthenticatedEmployeeProfileRouteImport
+      parentRoute: typeof AuthenticatedEmployeeRouteRoute
+    }
+    '/_authenticated/employee/reports': {
+      id: '/_authenticated/employee/reports'
+      path: '/reports'
+      fullPath: '/employee/reports'
+      preLoaderRoute: typeof AuthenticatedEmployeeReportsRouteImport
       parentRoute: typeof AuthenticatedEmployeeRouteRoute
     }
     '/_authenticated/employee/visits': {
@@ -778,6 +818,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAgencyRouteRouteChildren {
   AuthenticatedAgencyAiRoute: typeof AuthenticatedAgencyAiRoute
   AuthenticatedAgencyLeadsRoute: typeof AuthenticatedAgencyLeadsRoute
+  AuthenticatedAgencyReportsRoute: typeof AuthenticatedAgencyReportsRoute
   AuthenticatedAgencySettingsRoute: typeof AuthenticatedAgencySettingsRoute
   AuthenticatedAgencySubscriptionRoute: typeof AuthenticatedAgencySubscriptionRoute
   AuthenticatedAgencyTeamRoute: typeof AuthenticatedAgencyTeamRoute
@@ -793,6 +834,7 @@ const AuthenticatedAgencyRouteRouteChildren: AuthenticatedAgencyRouteRouteChildr
   {
     AuthenticatedAgencyAiRoute: AuthenticatedAgencyAiRoute,
     AuthenticatedAgencyLeadsRoute: AuthenticatedAgencyLeadsRoute,
+    AuthenticatedAgencyReportsRoute: AuthenticatedAgencyReportsRoute,
     AuthenticatedAgencySettingsRoute: AuthenticatedAgencySettingsRoute,
     AuthenticatedAgencySubscriptionRoute: AuthenticatedAgencySubscriptionRoute,
     AuthenticatedAgencyTeamRoute: AuthenticatedAgencyTeamRoute,
@@ -815,6 +857,7 @@ const AuthenticatedAgencyRouteRouteWithChildren =
 interface AuthenticatedEmployeeRouteRouteChildren {
   AuthenticatedEmployeeLeadsRoute: typeof AuthenticatedEmployeeLeadsRoute
   AuthenticatedEmployeeProfileRoute: typeof AuthenticatedEmployeeProfileRoute
+  AuthenticatedEmployeeReportsRoute: typeof AuthenticatedEmployeeReportsRoute
   AuthenticatedEmployeeVisitsRoute: typeof AuthenticatedEmployeeVisitsRoute
   AuthenticatedEmployeeIndexRoute: typeof AuthenticatedEmployeeIndexRoute
   AuthenticatedEmployeePropertiesPropertyIdRoute: typeof AuthenticatedEmployeePropertiesPropertyIdRoute
@@ -825,6 +868,7 @@ const AuthenticatedEmployeeRouteRouteChildren: AuthenticatedEmployeeRouteRouteCh
   {
     AuthenticatedEmployeeLeadsRoute: AuthenticatedEmployeeLeadsRoute,
     AuthenticatedEmployeeProfileRoute: AuthenticatedEmployeeProfileRoute,
+    AuthenticatedEmployeeReportsRoute: AuthenticatedEmployeeReportsRoute,
     AuthenticatedEmployeeVisitsRoute: AuthenticatedEmployeeVisitsRoute,
     AuthenticatedEmployeeIndexRoute: AuthenticatedEmployeeIndexRoute,
     AuthenticatedEmployeePropertiesPropertyIdRoute:

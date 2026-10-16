@@ -37,6 +37,7 @@ const files = [
   "drizzle/migrations/0013_lock_down_new_function_execute.sql",
   "drizzle/migrations/0014_team_invitations.sql",
   "drizzle/migrations/0015_lead_timeline_followups.sql",
+  "drizzle/migrations/0016_no_subscription_uses_free_plan.sql",
   "test/01_seed.sql",
   "test/02_security_tests.sql",
   "test/03_extended_security_tests.sql",

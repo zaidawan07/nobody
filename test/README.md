@@ -1,9 +1,14 @@
 # RLS test battery
 
-These scripts evaluate migrations `0000`..`0008` against a real Postgres
+These scripts evaluate migrations `0000`..`0016` against a real Postgres
 engine (not a mock). Use the in-process WASM Postgres runner
 (`node test/run-tests.mjs`) on any machine, or the psql commands below on a
-machine with a Postgres server:
+machine with a Postgres server.
+
+Note: the psql list below is a historical subset (through migration 0008 and
+test file 05). `test/run-tests.mjs` is the source of truth for the full order
+(migrations 0000-0016 plus test files 01-11); this section has not been kept in
+sync by hand beyond 0008.
 
 ```bash
 createdb estateos_test
@@ -45,9 +50,10 @@ features or their own subscription; one agency cannot read another agency's
 subscription, usage or audit rows; anon reads nothing; and the super admin
 can read every platform row and write plans.
 
-`05_subscription_limits.sql` covers migration 0008: an agency at its property
-or lead cap is refused the next insert by the database trigger, an unlimited
-plan and an agency with no subscription are unconstrained, owner-context
+`05_subscription_limits.sql` covers migrations 0008 and 0016: an agency at its
+property or lead cap is refused the next insert by the database trigger, an
+unlimited plan is unconstrained, an agency with **no subscription row now
+behaves as the Free plan** (0016 — it used to be unconstrained), owner-context
 maintenance still works, and the `plan_limit_for_agency` /
 `count_agency_metric` / `agency_is_billing_active` helpers refuse cross-agency
 probes (they are `SECURITY DEFINER`, so RLS alone would not protect them).

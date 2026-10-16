@@ -107,20 +107,61 @@ END $$;
 SELECT test_logout();
 
 -- ---------------------------------------------------------------------------
--- T36: no subscription at all means no limit
+-- T36: no subscription row means FREE limits, not unlimited (migration 0016).
+--
+-- This is the regression guard for 0016. Before it, plan_limit_for_agency()
+-- returned NULL (unconstrained) for an agency with no subscriptions row, and
+-- the 6th property below would have been accepted. Now the helper must return
+-- the Free limits and the trigger must refuse the write.
 -- ---------------------------------------------------------------------------
-\echo '--- T36: an agency with no subscription row is unconstrained ---'
+\echo '--- T36: an agency with no subscription row reports the Free plan limits ---'
 DELETE FROM public.subscriptions WHERE agency_id = '10000000-0000-0000-0000-000000000002';
+
+-- Put Agency B at or above the Free property cap, written as the owner so the
+-- guard does not apply (same escape hatch as the 01_seed inserts). Only adds
+-- rows, so it cannot disturb fixtures written by earlier files.
+DO $$
+DECLARE v_have int;
+BEGIN
+  SELECT count(*) INTO v_have FROM public.properties
+   WHERE agency_id = '10000000-0000-0000-0000-000000000002';
+  IF v_have < 5 THEN
+    INSERT INTO public.properties (id, agency_id, title, property_type, purpose, status)
+    SELECT gen_random_uuid(),
+           '10000000-0000-0000-0000-000000000002',
+           'B - free-cap fixture ' || i,
+           'house', 'sale', 'available'
+      FROM generate_series(1, 5 - v_have) AS i;
+  END IF;
+END $$;
+
 SELECT test_login('00000000-0000-0000-0000-0000000000b1');
+DO $$
+DECLARE v bigint; n int;
+BEGIN
+  v := public.plan_limit_for_agency('10000000-0000-0000-0000-000000000002', 'properties');
+  IF v <> 5 THEN RAISE EXCEPTION 'FAIL T36: no-subscription properties limit = %, expected Free 5', v; END IF;
+  v := public.plan_limit_for_agency('10000000-0000-0000-0000-000000000002', 'leads');
+  IF v <> 20 THEN RAISE EXCEPTION 'FAIL T36: no-subscription leads limit = %, expected Free 20', v; END IF;
+  v := public.plan_limit_for_agency('10000000-0000-0000-0000-000000000002', 'team_members');
+  IF v <> 2 THEN RAISE EXCEPTION 'FAIL T36: no-subscription team_members limit = %, expected Free 2', v; END IF;
+  RAISE NOTICE 'PASS T36: no subscription row now reports the Free plan limits (5/20/2)';
+END $$;
+
+\echo '--- T36b: the no-subscription agency admin cannot exceed the Free property cap (expect ERROR) ---'
+INSERT INTO public.properties (agency_id, title, property_type, purpose, status)
+VALUES ('10000000-0000-0000-0000-000000000002', 'B - over free cap', 'house', 'sale', 'available');
+
+\echo '--- T36c: the rejected write left no trace and the cap was not widened ---'
 DO $$
 DECLARE n int;
 BEGIN
-  INSERT INTO public.properties (agency_id, title, property_type, purpose, status)
-  VALUES ('10000000-0000-0000-0000-000000000002', 'B - no subscription ok', 'house', 'sale', 'available');
+  SELECT count(*) INTO n FROM public.properties WHERE agency_id = '10000000-0000-0000-0000-000000000002';
+  IF n < 5 THEN RAISE EXCEPTION 'FAIL T36c: Agency B dropped below its free-cap fixture (% rows)', n; END IF;
   SELECT count(*) INTO n FROM public.properties
-   WHERE agency_id = '10000000-0000-0000-0000-000000000002' AND title = 'B - no subscription ok';
-  IF n <> 1 THEN RAISE EXCEPTION 'FAIL T36: unconstrained insert produced % rows', n; END IF;
-  RAISE NOTICE 'PASS T36: no subscription means no limit';
+   WHERE agency_id = '10000000-0000-0000-0000-000000000002' AND title = 'B - over free cap';
+  IF n <> 0 THEN RAISE EXCEPTION 'FAIL T36c: the over-cap property was written anyway'; END IF;
+  RAISE NOTICE 'PASS T36c: the over-cap insert was rejected';
 END $$;
 SELECT test_logout();
 

@@ -18,6 +18,7 @@ import { Route as AuthenticatedEmployeeRouteRouteImport } from './routes/_authen
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPendingRouteImport } from './routes/_authenticated/pending'
 import { Route as AuthenticatedPlatformRouteRouteImport } from './routes/_authenticated/platform/route'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as AuthIndexRouteImport } from './routes/auth/index'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
 import { Route as AuthResetPasswordRouteImport } from './routes/auth/reset-password'
@@ -98,6 +99,11 @@ const AuthenticatedPlatformRouteRoute =
     path: '/platform',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -287,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/platform': typeof AuthenticatedPlatformRouteRouteWithChildren
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/pending': typeof AuthenticatedPendingRoute
+  '/api/health': typeof ApiHealthRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signup': typeof AuthSignupRoute
@@ -324,6 +331,7 @@ export interface FileRoutesByTo {
   '/accept-invitation': typeof AcceptInvitationRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/pending': typeof AuthenticatedPendingRoute
+  '/api/health': typeof ApiHealthRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signup': typeof AuthSignupRoute
@@ -367,6 +375,7 @@ export interface FileRoutesById {
   '/_authenticated/platform': typeof AuthenticatedPlatformRouteRouteWithChildren
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/pending': typeof AuthenticatedPendingRoute
+  '/api/health': typeof ApiHealthRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signup': typeof AuthSignupRoute
@@ -410,6 +419,7 @@ export interface FileRouteTypes {
     | '/platform'
     | '/notifications'
     | '/pending'
+    | '/api/health'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/signup'
@@ -447,6 +457,7 @@ export interface FileRouteTypes {
     | '/accept-invitation'
     | '/notifications'
     | '/pending'
+    | '/api/health'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/signup'
@@ -489,6 +500,7 @@ export interface FileRouteTypes {
     | '/_authenticated/platform'
     | '/_authenticated/notifications'
     | '/_authenticated/pending'
+    | '/api/health'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/signup'
@@ -527,6 +539,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRouteRoute: typeof AuthRouteRouteWithChildren
   AcceptInvitationRoute: typeof AcceptInvitationRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiCronPropertyCheckinsRoute: typeof ApiCronPropertyCheckinsRoute
 }
 
@@ -594,6 +607,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform'
       preLoaderRoute: typeof AuthenticatedPlatformRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/auth/': {
       id: '/auth/'
@@ -953,6 +973,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRouteRoute: AuthRouteRouteWithChildren,
   AcceptInvitationRoute: AcceptInvitationRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiCronPropertyCheckinsRoute: ApiCronPropertyCheckinsRoute,
 }
 export const routeTree = rootRouteImport

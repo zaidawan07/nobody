@@ -86,6 +86,15 @@ and the "email was sent" branch has **never been exercised** here.
 - `BLOCKED` `src/integrations/supabase/types.ts` is hand-maintained
   (`TODO(regen)`) because the Supabase CLI version available here cannot
   regenerate it against the live project.
+- `TODO` No automated UI or end-to-end coverage: the dev-smoke step asserts HTTP
+  status codes (and `/api/health`'s body) only, so nothing exercises the
+  rendered app.
+- `TODO` No structured, redacted request logging, and no documented backup or
+  rollback procedure — the two remaining Phase 6 items in
+  `docs/IMPLEMENTATION_STATUS.md`. The health check that was the third is now
+  built (see §4).
+
+---
 
 ## 3. Database migrations not yet applied
 
@@ -103,3 +112,145 @@ sign-off.
     applying.
   - Canceled/expired subscriptions still keep the plan they were on; reverting
     **canceled** subscriptions to Free is out of scope and not done here.
+
+### 3.1 Which migrations are pending is not recorded reliably
+
+Three things that could track it, and what each one actually holds:
+
+| Source                                         | What it holds                                                              |
+| ---------------------------------------------- | -------------------------------------------------------------------------- |
+| `drizzle/migrations/meta/_journal.json`        | only `0000`–`0001`; it stops long before the chain ends                    |
+| `scripts/apply-migrations.mjs`                 | applies the files and commits; it writes **no** tracking row               |
+| `supabase_migrations.schema_migrations` (live) | as recorded on 2026-10-13, a single row: `0009_lock_down_function_execute` |
+
+So "pending" cannot be computed from the repo, and the recording table is not
+the whole story either. Before applying anything, check the live project with a
+read-only query and treat that as the source of truth.
+
+Recorded, but **not re-verified here**: `0010`–`0013`
+(`docs/IMPLEMENTATION_STATUS.md` — otherwise out of date, it cites a
+122-section test run where the current battery is 159) and `0016` (this file).
+
+`drizzle/migrations/` holds `0000`–`0016`; the next free number is **0017**.
+
+### 3.2 How to apply, when the time comes
+
+```bash
+node scripts/apply-migrations.mjs --dry-run --from 0010   # list, no connection
+node scripts/apply-migrations.mjs --from 0010             # apply that batch
+```
+
+- `--from` starts at the first number that has not been applied, so an
+  already-applied migration is never replayed against real data.
+- The whole batch runs in **one transaction** and rolls back on any error, so a
+  failure cannot leave the schema half-migrated.
+- Never start at `0000`: those are applied in substance, and a replay risks
+  re-touching data.
+- `drizzle-kit migrate` cannot be used at all — its journal stops at `0001`.
+- Grandfather existing agencies before `0016` (see above), and get explicit
+  sign-off before any of this reaches the live project.
+
+---
+
+## 4. Deploy readiness
+
+The deploy path is documented in `docs/DEPLOY.md`. Nothing here has been
+deployed.
+
+- `TODO` **No deploy has ever been run**, from this machine or otherwise. The
+  command — `npm run build` then `npx wrangler deploy` — is Nitro's and
+  Cloudflare's documented path; it has never been executed here, so the first
+  one is a real test, not a formality. Needs sign-off.
+- `TODO` Runtime secrets are **not known to be set on the host**. The Worker
+  needs `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+  and `CRON_SECRET` (names only; see `docs/DEPLOY.md`). `UNVERIFIED` — the
+  host's configuration cannot be read from the repo. Locally, `TWILIO_*` and
+  `CRON_SECRET` are present but **empty**, and `SMTP_HOST`/`RESEND_API_KEY` do
+  not appear in `.env` at all.
+- `DONE` A health endpoint exists: `GET /api/health`. It answers whether the
+  server is up and nothing else, and it never touches the database.
+- `TODO` No documented backup or rollback procedure (see §2). Supabase's own
+  backup behaviour depends on the project's plan and is `UNVERIFIED` here.
+- `TODO` After the first deploy: confirm `/sw.js` is really served with
+  `cache-control: no-cache` (the `_headers` rule) and that `GET /api/health`
+  answers `200` through the real host, not just the dev server.
+
+---
+
+## 5. Verification: what the gate covers, and what it does not
+
+Gate run for this branch (`feature/pre-whatsapp`), at the commit that added the
+health check:
+
+| Step              | Command                                                      | Result                                       |
+| ----------------- | ------------------------------------------------------------ | -------------------------------------------- |
+| Formatting        | `npx prettier --write <touched files>`                       | clean                                        |
+| Types             | `npx tsc --noEmit`                                           | 0 errors                                     |
+| DB/security tests | `node test/run-tests.mjs`                                    | 159 sections, 29 expected-error guards, pass |
+| Price parser      | `node node_modules/tsx/dist/cli.mjs test/pkr-parser.test.ts` | 20/20                                        |
+| Build             | `node node_modules/vite/bin/vite.js build`                   | green                                        |
+| Secret leak scan  | `node scripts/check-client-bundle.mjs`                       | PASS — 86 assets, 2 secrets compared         |
+| Dev smoke         | dev server on a fixed port                                   | 10 routes `200` + 7 `/api/health` assertions |
+
+What it does **not** cover:
+
+- The **built Worker is never executed**. The build proves it compiles and
+  emits; only the node dev server has actually served the API route.
+- Live database behaviour under real users and RLS — no interactive session.
+- Email delivery: with no SMTP/RESEND configured, the "sent" branch has never
+  run (see §1.3).
+- Real devices: the PWA work was checked in one Chromium session on this
+  machine; iOS behaviour is inferred from a user-agent matrix, not a device.
+- WhatsApp and the AI assistant: not on this branch.
+
+`TODO` `docs/PRODUCT_VERIFICATION.md` — the final Phase 7 item in
+`docs/IMPLEMENTATION_STATUS.md` — is still not written. This section is a
+stopgap, not a substitute.
+
+---
+
+## 6. Installable app (PWA)
+
+Shipped in this pass. What is in place:
+
+- `public/manifest.webmanifest` — standalone display, theme `#095B41`, four
+  icons (two `any`, two `maskable`).
+- `public/sw.js` — caches **static assets only**: `/assets/*` (cache-first;
+  those URLs are content-hashed) and `/manifest.webmanifest`, `/favicon.ico`,
+  `/robots.txt`, `/icons/*` (served from cache, revalidated on each use). It
+  never caches HTML, `/api/*` or server-function responses: every page is
+  tenant- and permission-scoped, so a shared cache entry would serve one
+  agency's data to the next session.
+- Registration is **production-only** (`src/components/pwa/useServiceWorker.ts`).
+  In dev the hook actively unregisters a leftover worker and deletes
+  `estateos-*` caches, so a previewed build can never shadow the dev server.
+- Install UI: Chromium/Edge get the real `beforeinstallprompt` banner. iOS
+  Safari has no such API, so it gets a "Tap Share, then Add to Home Screen"
+  instruction instead. Dismissal is remembered under
+  `estateos:pwa-install-dismissed`.
+
+Operating it:
+
+- Bump `CACHE_VERSION` in `public/sw.js` when a non-hashed file changes. A
+  250-entry oldest-first cap is the backstop if a bump is forgotten.
+- No `skipWaiting()`: a new worker takes over on the next full restart, so
+  activation cannot delete cache entries the open page still needs.
+- Emergency unregister procedure: `docs/DEPLOY.md`.
+
+- `TODO` The icons are placeholders (see §2).
+- `UNVERIFIED` Install and offline behaviour on a real iOS device and on
+  Android Chrome.
+
+---
+
+## 7. Open decisions
+
+- Apply the unapplied migration batch (§3)? Needs explicit sign-off plus the
+  grandfathering described there.
+- Set `SMTP_HOST`/`RESEND_API_KEY` (§1.3) and the Supabase **Email OTP
+  expiration** (§1.1). Both are project settings, neither lives in the repo.
+- Three paths in the working tree are untracked and deliberately uncommitted:
+  `docs/whatsapp/staging/` (the WhatsApp `0014`/`0015` drafts, which collide
+  with the CRM migrations of those numbers), `project-audit-report/`, and
+  `opencode` (a 0-byte file). Decide whether any belong in the repo. Repo
+  hygiene, not a launch blocker.

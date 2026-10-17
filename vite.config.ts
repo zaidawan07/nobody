@@ -47,7 +47,20 @@ export default defineConfig(async ({ command }) => {
 
   if (command === "build") {
     const { nitro } = await import("nitro/vite");
-    plugins.push(nitro({ preset: nitroPreset }));
+    plugins.push(
+      nitro({
+        preset: nitroPreset,
+        // Nitro writes these into .output/public/_headers, which Cloudflare
+        // Workers applies to responses served by the static-assets binding.
+        // /assets/* is content-hashed and safe to hold for a year; /sw.js is
+        // the opposite -- it is how a service-worker update reaches users, so
+        // a host or CDN that caches it delays that update for as long as it
+        // cached it for.
+        routeRules: {
+          "/sw.js": { headers: { "cache-control": "no-cache, no-store, must-revalidate" } },
+        },
+      }),
+    );
   }
 
   return { plugins };

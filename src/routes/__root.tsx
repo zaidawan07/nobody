@@ -12,6 +12,8 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
+import { useServiceWorker } from "@/components/pwa/useServiceWorker";
 
 function NotFoundComponent() {
   return (
@@ -81,6 +83,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      // PWA: the same colour as the background in public/manifest.webmanifest.
+      { name: "theme-color", content: "#095B41" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -91,6 +95,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap",
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest", type: "application/manifest+json" },
+      { rel: "apple-touch-icon", href: "/icons/icon-192.png", sizes: "192x192" },
     ],
   }),
   shellComponent: RootShell,
@@ -117,6 +123,9 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
 
+  // Registers /sw.js in production builds; dev unregisters leftovers instead.
+  useServiceWorker();
+
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
@@ -131,6 +140,7 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster />
+      <InstallPrompt />
     </QueryClientProvider>
   );
 }

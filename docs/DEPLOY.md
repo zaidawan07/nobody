@@ -140,7 +140,7 @@ applied separately, on purpose:
 
 ```bash
 node scripts/apply-migrations.mjs --dry-run          # list what would run
-node scripts/apply-migrations.mjs --from 0010        # a controlled batch
+node scripts/apply-migrations.mjs --from 0014        # a controlled batch
 ```
 
 `drizzle-kit migrate` cannot be used for this project:
@@ -148,18 +148,18 @@ node scripts/apply-migrations.mjs --from 0010        # a controlled batch
 would replay those two and never reach the rest. The script applies the numbered
 files directly instead.
 
-The chain is only partly applied on the live project, which is what `--from` is
-for: a batch starts at the first migration that has not run yet, so an
-already-applied migration is never replayed against real data. `--dry-run`
-prints the exact list without connecting. The whole batch runs in a single
-transaction and rolls back on any error, so a failure cannot leave the schema
-half-migrated.
+On the live project `0000`–`0013` are applied, so `--from 0014` is the current
+starting point; anything earlier would only replay migrations that already ran.
+`--dry-run` prints the exact list without connecting. The whole batch runs in a
+single transaction and rolls back on any error, so a failure cannot leave the
+schema half-migrated.
 
 Two rules:
 
 - Applying anything to the live project changes production and needs explicit
-  written sign-off. `drizzle/migrations/0016_no_subscription_uses_free_plan.sql`
-  is written and tested locally but is **not applied**.
+  written sign-off. `0014`, `0015` and
+  `drizzle/migrations/0016_no_subscription_uses_free_plan.sql` are written and
+  tested locally but are **not applied**.
 - Nothing links the two operations: a deploy does not apply migrations, and a
   migration does not deploy code. Either can be rolled back without the other.
 

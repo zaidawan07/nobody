@@ -37,3 +37,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local-only working files (not part of the project)
+opencode
+project-audit-report/

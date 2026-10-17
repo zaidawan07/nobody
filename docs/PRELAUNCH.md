@@ -96,15 +96,25 @@ and the "email was sent" branch has **never been exercised** here.
 
 ---
 
-## 3. Database migrations not yet applied
+## 3. Database migrations: applied vs pending
 
-Written locally, **not applied** to the live project. Applying needs explicit
-sign-off.
+Live state, verified read-only:
 
-- `drizzle/migrations/0016_no_subscription_uses_free_plan.sql` — makes an agency
-  with no `subscriptions` row behave as the **Free** plan limits (5 properties,
-  20 leads, 2 team members, 100 WhatsApp messages, 50 AI requests, 1 GB storage)
-  instead of "unlimited".
+| Range                  | State                                                              |
+| ---------------------- | ------------------------------------------------------------------ |
+| `0000`–`0013`          | **applied**                                                        |
+| `0014`, `0015`, `0016` | written locally, **not applied**; applying needs explicit sign-off |
+
+`drizzle/migrations/` holds `0000`–`0016`, so the next free number is **0017**.
+
+### 3.1 The pending batch
+
+- `0014_team_invitations.sql`
+- `0015_lead_timeline_followups.sql`
+- `0016_no_subscription_uses_free_plan.sql` — makes an agency with no
+  `subscriptions` row behave as the **Free** plan limits (5 properties, 20 leads,
+  2 team members, 100 WhatsApp messages, 50 AI requests, 1 GB storage) instead of
+  "unlimited".
   - **Operational risk:** agencies created _before_ this migration have no
     subscription row. Once applied they become Free-capped, so any such agency
     already above those numbers will start failing inserts that count against the
@@ -113,42 +123,30 @@ sign-off.
   - Canceled/expired subscriptions still keep the plan they were on; reverting
     **canceled** subscriptions to Free is out of scope and not done here.
 
-### 3.1 Which migrations are pending is not recorded reliably
-
-Three things that could track it, and what each one actually holds:
-
-| Source                                         | What it holds                                                              |
-| ---------------------------------------------- | -------------------------------------------------------------------------- |
-| `drizzle/migrations/meta/_journal.json`        | only `0000`–`0001`; it stops long before the chain ends                    |
-| `scripts/apply-migrations.mjs`                 | applies the files and commits; it writes **no** tracking row               |
-| `supabase_migrations.schema_migrations` (live) | as recorded on 2026-10-13, a single row: `0009_lock_down_function_execute` |
-
-So "pending" cannot be computed from the repo, and the recording table is not
-the whole story either. Before applying anything, check the live project with a
-read-only query and treat that as the source of truth.
-
-Recorded, but **not re-verified here**: `0010`–`0013`
-(`docs/IMPLEMENTATION_STATUS.md` — otherwise out of date, it cites a
-122-section test run where the current battery is 159) and `0016` (this file).
-
-`drizzle/migrations/` holds `0000`–`0016`; the next free number is **0017**.
-
 ### 3.2 How to apply, when the time comes
 
 ```bash
-node scripts/apply-migrations.mjs --dry-run --from 0010   # list, no connection
-node scripts/apply-migrations.mjs --from 0010             # apply that batch
+node scripts/apply-migrations.mjs --dry-run --from 0014   # list, no connection
+node scripts/apply-migrations.mjs --from 0014             # apply that batch
 ```
 
-- `--from` starts at the first number that has not been applied, so an
-  already-applied migration is never replayed against real data.
+- Start at `0014`: `0000`–`0013` are already applied, and replaying them would
+  only risk re-touching real data.
 - The whole batch runs in **one transaction** and rolls back on any error, so a
   failure cannot leave the schema half-migrated.
-- Never start at `0000`: those are applied in substance, and a replay risks
-  re-touching data.
 - `drizzle-kit migrate` cannot be used at all — its journal stops at `0001`.
 - Grandfather existing agencies before `0016` (see above), and get explicit
   sign-off before any of this reaches the live project.
+
+### 3.3 Why the state had to be verified by hand
+
+Nothing in the repo records which migrations have run: the drizzle journal stops
+at `0001`, and `scripts/apply-migrations.mjs` applies files and commits without
+writing a tracking row. `supabase_migrations.schema_migrations` is not the whole
+story either — as of 2026-10-13 it held a single row (`0009`), while `0010`–`0013`
+are in fact applied. Re-verify with a read-only query before applying anything
+and treat that as the source of truth. (`docs/IMPLEMENTATION_STATUS.md` still
+lists `0010`–`0013` as unapplied; that log is stale.)
 
 ---
 

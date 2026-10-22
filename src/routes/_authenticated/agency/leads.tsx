@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchLeads, deleteLead, fetchAssignableMembers } from "@/lib/queries";
+import { fetchLeads, deleteLead, fetchAssignableMembers, type LeadRow } from "@/lib/queries";
 import { LeadDialog } from "@/components/leads/LeadDialog";
 import { toast } from "sonner";
 
@@ -55,9 +55,10 @@ function AgencyLeadsPage() {
     queryKey: ["leads", agencyId],
     queryFn: () => fetchLeads(agencyId),
   });
-  const [leadDialog, setLeadDialog] = useState<{ mode: "create" | "edit"; lead?: any } | null>(
-    null,
-  );
+  const [leadDialog, setLeadDialog] = useState<{
+    mode: "create" | "edit";
+    lead?: LeadRow;
+  } | null>(null);
 
   const visitsFiltered = (data ?? [])
     .filter((l) => {

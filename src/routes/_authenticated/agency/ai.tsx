@@ -116,6 +116,14 @@ function AiConfigPage() {
 
   return (
     <AppShell title="AI assistant" description="Tune the WhatsApp AI for this agency.">
+      <Alert className="mb-4 max-w-md">
+        <AlertDescription>
+          Automatic replies run only after the agency connects its Meta number, configures the
+          OpenAI API key and model on the server, enables AI here, and enables deployment-level
+          WhatsApp live sending. Replies use the open customer service window; handoff keywords
+          pause AI for that conversation.
+        </AlertDescription>
+      </Alert>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}

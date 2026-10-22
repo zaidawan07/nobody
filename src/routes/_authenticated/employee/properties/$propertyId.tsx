@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -53,11 +54,13 @@ import {
 import {
   fetchProperty,
   fetchCheckins,
-  scheduleCheckin,
   recordCheckinResponse,
   markCheckinSkipped,
   type CheckinRow,
 } from "@/lib/queries";
+import { schedulePropertyCheckin, markCheckinPrepared } from "@/lib/checkins.functions";
+import { buildCheckinMessage } from "@/lib/checkin-message";
+import { buildWhatsAppDraftUrl } from "@/lib/phone";
 import { PropertyMediaManager } from "@/components/property/PropertyMediaManager";
 import { formatPkr, formatArea, titleCase } from "@/lib/format";
 
@@ -125,16 +128,16 @@ function PropertyDetailPage() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <ContactsCard
-          property={property}
-          agencyId={access.agencyId!}
-          currentUserId={access.userId}
-        />
+        <ContactsCard property={property} />
         <PropertyMediaManager propertyId={property.id} agencyId={access.agencyId!} readOnly />
       </div>
 
       <div className="mt-6">
-        <CheckinsCard propertyId={propertyId} />
+        <CheckinsCard
+          propertyId={propertyId}
+          propertyTitle={property.title}
+          agencyName={access.agencyName ?? "EstateOS"}
+        />
       </div>
     </AppShell>
   );
@@ -155,8 +158,6 @@ function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
 
 function ContactsCard({
   property,
-  agencyId,
-  currentUserId,
 }: {
   property: {
     id: string;
@@ -168,8 +169,6 @@ function ContactsCard({
     realtor_name: string | null;
     realtor_phone: string | null;
   };
-  agencyId: string;
-  currentUserId: string;
 }) {
   const contacts = [
     {
@@ -222,9 +221,6 @@ function ContactsCard({
                 </div>
                 <ScheduleCheckinDialog
                   propertyId={property.id}
-                  agencyId={agencyId}
-                  assignedTo={property.assigned_to}
-                  createdBy={currentUserId}
                   contactType={c.type}
                   contactName={c.name}
                   contactPhone={c.phone!}
@@ -240,21 +236,16 @@ function ContactsCard({
 const scheduleSchema = z.object({
   channel: z.enum(["whatsapp", "sms"]),
   scheduledFor: z.string().min(1, "Pick a date"),
+  consentConfirmed: z.boolean().refine(Boolean, "Confirm the contact gave permission first."),
 });
 
 function ScheduleCheckinDialog({
   propertyId,
-  agencyId,
-  assignedTo,
-  createdBy,
   contactType,
   contactName,
   contactPhone,
 }: {
   propertyId: string;
-  agencyId: string;
-  assignedTo: string | null;
-  createdBy: string;
   contactType: "owner" | "tenant" | "realtor";
   contactName: string | null;
   contactPhone: string;
@@ -262,25 +253,25 @@ function ScheduleCheckinDialog({
   const [open, setOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const scheduleCheckin = useServerFn(schedulePropertyCheckin);
 
   const form = useForm<z.infer<typeof scheduleSchema>>({
     resolver: zodResolver(scheduleSchema),
-    defaultValues: { channel: "whatsapp", scheduledFor: "" },
+    defaultValues: { channel: "whatsapp", scheduledFor: "", consentConfirmed: false },
   });
 
   async function onSubmit(values: z.infer<typeof scheduleSchema>) {
     setFormError(null);
     try {
       await scheduleCheckin({
-        agencyId,
-        assignedTo,
-        propertyId,
-        contactType,
-        contactName: contactName ?? undefined,
-        contactPhone,
-        channel: values.channel,
-        scheduledFor: new Date(values.scheduledFor).toISOString(),
-        createdBy,
+        data: {
+          propertyId,
+          contactType,
+          contactPhone,
+          channel: values.channel,
+          scheduledFor: new Date(values.scheduledFor).toISOString(),
+          consentConfirmed: values.consentConfirmed,
+        },
       });
       toast.success("Check-in scheduled");
       setOpen(false);
@@ -302,8 +293,9 @@ function ScheduleCheckinDialog({
         <DialogHeader>
           <DialogTitle>Schedule a check-in</DialogTitle>
           <DialogDescription>
-            Sends a message to {contactName || "this contact"} ({contactPhone}) asking about the
-            property's condition and whether it's vacant.
+            This records a follow-up for {contactName || "this contact"} ({contactPhone}). WhatsApp
+            opens as a draft for you to review and send. Scheduled SMS only sends after live
+            messaging is enabled.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -348,6 +340,31 @@ function ScheduleCheckinDialog({
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="consentConfirmed"
+              render={({ field }) => (
+                <FormItem className="flex items-start gap-3 rounded-lg border border-border p-3">
+                  <FormControl>
+                    <input
+                      type="checkbox"
+                      checked={field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="mt-1 size-4 accent-primary"
+                      aria-label="Confirm contact permission"
+                    />
+                  </FormControl>
+                  <div className="space-y-1">
+                    <FormLabel>Permission recorded</FormLabel>
+                    <p className="text-xs text-muted-foreground">
+                      I confirm this contact agreed to receive property follow-ups from this agency.
+                      EstateOS records my confirmation and user account.
+                    </p>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              )}
+            />
             <DialogFooter>
               <Button type="submit" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? (
@@ -368,8 +385,17 @@ function ScheduleCheckinDialog({
 // Check-ins history
 // ---------------------------------------------------------------------------
 
-function CheckinsCard({ propertyId }: { propertyId: string }) {
+function CheckinsCard({
+  propertyId,
+  propertyTitle,
+  agencyName,
+}: {
+  propertyId: string;
+  propertyTitle: string;
+  agencyName: string;
+}) {
   const queryClient = useQueryClient();
+  const prepareCheckin = useServerFn(markCheckinPrepared);
   const { data, isLoading } = useQuery({
     queryKey: ["checkins", propertyId],
     queryFn: () => fetchCheckins(propertyId),
@@ -396,39 +422,83 @@ function CheckinsCard({ propertyId }: { propertyId: string }) {
         </p>
       ) : (
         <div className="mt-3 space-y-2">
-          {data.map((c) => (
-            <div
-              key={c.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm"
-            >
-              <div>
-                <p className="font-medium">
-                  {titleCase(c.contact_type)} · {titleCase(c.channel)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(c.scheduled_for).toLocaleString()}
-                  {c.response_text ? ` — "${c.response_text}"` : ""}
-                  {c.is_vacant ? " — reported vacant" : ""}
-                </p>
-                {c.provider_error ? (
-                  <p className="text-xs text-destructive">{c.provider_error}</p>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge status={c.status} />
-                {c.status === "scheduled" || c.status === "sent" ? (
-                  <>
-                    <Button size="sm" variant="ghost" onClick={() => setRespondingTo(c)}>
-                      <CheckCircle2 className="size-4" /> Log response
+          {data.map((c) => {
+            const draftUrl =
+              c.status === "scheduled" &&
+              !c.prepared_at &&
+              c.channel === "whatsapp" &&
+              c.consent_at &&
+              new Date(c.scheduled_for).getTime() <= Date.now()
+                ? buildWhatsAppDraftUrl(
+                    c.contact_phone,
+                    buildCheckinMessage({
+                      propertyTitle,
+                      contactType: c.contact_type,
+                      agencyName,
+                    }),
+                  )
+                : null;
+            return (
+              <div
+                key={c.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm"
+              >
+                <div>
+                  <p className="font-medium">
+                    {titleCase(c.contact_type)} · {titleCase(c.channel)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(c.scheduled_for).toLocaleString()}
+                    {c.response_text ? ` — "${c.response_text}"` : ""}
+                    {c.is_vacant ? " — reported vacant" : ""}
+                  </p>
+                  {c.prepared_at ? (
+                    <p className="text-xs text-muted-foreground">
+                      WhatsApp draft opened; this does not confirm it was sent.
+                    </p>
+                  ) : null}
+                  {c.provider_error ? (
+                    <p className="text-xs text-destructive">{c.provider_error}</p>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={c.prepared_at ? "prepared" : c.status} />
+                  {draftUrl ? (
+                    <Button asChild size="sm" variant="secondary">
+                      <a
+                        href={draftUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => {
+                          void prepareCheckin({ data: { id: c.id } })
+                            .then(() =>
+                              queryClient.invalidateQueries({ queryKey: ["checkins", propertyId] }),
+                            )
+                            .catch((e: unknown) =>
+                              toast.error(
+                                e instanceof Error ? e.message : "Could not record the draft.",
+                              ),
+                            );
+                        }}
+                      >
+                        <MessageCircle className="size-4" /> Open WhatsApp draft
+                      </a>
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => skip(c.id)}>
-                      <XCircle className="size-4" />
-                    </Button>
-                  </>
-                ) : null}
+                  ) : null}
+                  {c.status === "scheduled" || c.status === "sent" ? (
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => setRespondingTo(c)}>
+                        <CheckCircle2 className="size-4" /> Log response
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => skip(c.id)}>
+                        <XCircle className="size-4" />
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

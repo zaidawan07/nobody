@@ -8,40 +8,68 @@ function record(error: unknown) {
   lastCapturedError = { error, at: Date.now() };
 }
 
-// h3's HTTPError serializes to {"status":500,"unhandled":true,"message":"HTTPError"} —
-// no stack, no cause — so a plain console.error(error) reaches the log pipeline with
-// the failure detail stripped. Expand Error-like args into a string that keeps the
-// message, stack, and the full cause chain.
-const CAUSE_DEPTH_LIMIT = 5;
-const DESCRIPTION_LENGTH_LIMIT = 8_000;
+// Error messages and causes can contain customer input, provider responses, or
+// credentials. Keep only the error class, numeric HTTP status, and stack frames.
+const DESCRIPTION_LENGTH_LIMIT = 4_000;
+const SAFE_ERROR_NAMES = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "URIError",
+  "AggregateError",
+  "AbortError",
+  "HTTPError",
+]);
 
 export function describeError(error: unknown): string {
-  const parts: string[] = [];
-  let current: unknown = error;
-  for (let depth = 0; depth < CAUSE_DEPTH_LIMIT && current != null; depth++) {
-    if (!(current instanceof Error)) {
-      parts.push(typeof current === "string" ? current : safeStringify(current));
-      break;
-    }
-    const label = depth === 0 ? "" : "caused by: ";
-    const status = describeStatus(current);
-    parts.push(`${label}${current.stack ?? `${current.name}: ${current.message}`}${status}`);
-    current = current.cause;
+  if (!(error instanceof Error)) return "NonError thrown (details omitted)";
+
+  const name = safeErrorName(error);
+  const status = describeStatus(error);
+  const frames = safeStackLocations(error);
+
+  return [`${name}${status}`, frames].filter(Boolean).join("\n").slice(0, DESCRIPTION_LENGTH_LIMIT);
+}
+
+function safeErrorName(error: Error): string {
+  try {
+    return SAFE_ERROR_NAMES.has(error.name) ? error.name : "Error";
+  } catch {
+    return "Error";
   }
-  return parts.join("\n").slice(0, DESCRIPTION_LENGTH_LIMIT);
+}
+
+function safeStackLocations(error: Error): string | undefined {
+  let stack: unknown;
+  try {
+    stack = error.stack;
+  } catch {
+    return undefined;
+  }
+  if (typeof stack !== "string") return undefined;
+
+  const locations: string[] = [];
+  for (const line of stack.split("\n").slice(1)) {
+    // Never log frame text or paths. They can contain query strings or data
+    // when a provider or runtime constructs a nonstandard stack trace.
+    const match = /:(\d{1,8}):(\d{1,8})\)?\s*$/.exec(line);
+    if (match) locations.push(`  frame ${locations.length + 1} at ${match[1]}:${match[2]}`);
+    if (locations.length === 20) break;
+  }
+  return locations.join("\n") || undefined;
 }
 
 function describeStatus(error: Error): string {
-  const { status, statusCode } = error as { status?: unknown; statusCode?: unknown };
-  const value = status ?? statusCode;
-  return typeof value === "number" ? ` (status ${value})` : "";
-}
-
-function safeStringify(value: unknown): string {
   try {
-    return JSON.stringify(value) ?? String(value);
+    const { status, statusCode } = error as { status?: unknown; statusCode?: unknown };
+    const value = status ?? statusCode;
+    return typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599
+      ? ` (status ${value})`
+      : "";
   } catch {
-    return String(value);
+    return "";
   }
 }
 
@@ -49,17 +77,23 @@ function isErrorLike(value: unknown): value is Error {
   return value instanceof Error;
 }
 
+export function describeConsoleErrorArgument(value: unknown): string {
+  if (isErrorLike(value)) return describeError(value);
+  return typeof value === "string" ? "[error log text omitted]" : "[error log value omitted]";
+}
+
 // Wrap console.error so errors logged by any layer — including h3's internal
 // unhandled-error logging, which this file cannot hook directly — are both
-// recorded for consumeLastCapturedError and expanded before serialization.
+// recorded for consumeLastCapturedError and reduced to safe diagnostic metadata.
 const originalConsoleError = console.error.bind(console);
 console.error = (...args: unknown[]) => {
-  const expanded = args.map((arg) => {
-    if (!isErrorLike(arg)) return arg;
-    record(arg);
-    return describeError(arg);
+  const safeArgs = args.map((arg) => {
+    if (isErrorLike(arg)) {
+      record(arg);
+    }
+    return describeConsoleErrorArgument(arg);
   });
-  originalConsoleError(...expanded);
+  originalConsoleError(...safeArgs);
 };
 
 if (typeof globalThis.addEventListener === "function") {

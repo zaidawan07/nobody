@@ -92,7 +92,7 @@ export function VisitDialog({
       property_id: visit?.property_id ?? "",
       requested_at: visit?.requested_at ? toLocalInput(visit.requested_at) : "",
       scheduled_at: visit?.scheduled_at ? toLocalInput(visit.scheduled_at) : "",
-      status: (visit?.status ?? "requested") as any,
+      status: visit?.status ?? "requested",
       assigned_to: visit?.assigned_to ?? "",
       notes: visit?.notes ?? "",
       confirmed: visit?.confirmed ?? false,
@@ -102,7 +102,7 @@ export function VisitDialog({
   async function onSubmit(v: Values) {
     setFormError(null);
     try {
-      const payload: any = {
+      const payload = {
         agency_id: agencyId,
         lead_id: v.lead_id || null,
         property_id: v.property_id || null,
@@ -112,7 +112,7 @@ export function VisitDialog({
         assigned_to: v.assigned_to || null,
         notes: v.notes || null,
         confirmed: v.confirmed ?? false,
-      };
+      } satisfies Parameters<typeof createVisit>[0];
       if (visit) {
         await updateVisit(visit.id, payload);
         toast.success("Visit updated");

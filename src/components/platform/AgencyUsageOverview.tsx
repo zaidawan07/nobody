@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { formatPkr } from "@/lib/format";
 import { fetchAgencyDetail, fetchAgencyStats, fetchAgencySubscription } from "@/lib/queries";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AgencyUsageOverviewProps {
   agencyId: string;
@@ -15,7 +16,13 @@ interface AgencyUsageOverviewProps {
 // Feature keys that map to a count this app actually computes. Everything
 // else in plan_features has no counter behind it, so we say so instead of
 // inventing a number.
-const COUNTED_FEATURES = new Set(["properties", "leads", "team_members"]);
+const COUNTED_FEATURES = new Set([
+  "properties",
+  "leads",
+  "team_members",
+  "whatsapp_messages",
+  "ai_requests",
+]);
 
 function limitLabel(limit: number | null): string {
   if (limit === null) return "Not set";
@@ -39,7 +46,22 @@ export function AgencyUsageOverview({ agencyId }: AgencyUsageOverviewProps) {
     queryFn: () => fetchAgencySubscription(agencyId),
   });
 
-  if (agencyLoading || statsLoading || subscriptionLoading) {
+  const { data: meteredCounts, isLoading: meteredLoading } = useQuery({
+    queryKey: ["agency-metered-usage", agencyId],
+    queryFn: async () => {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("usage_counters")
+        .select("metric_key,count")
+        .eq("agency_id", agencyId)
+        .lte("period_start", now)
+        .gt("period_end", now);
+      if (error) throw error;
+      return Object.fromEntries((data ?? []).map((row) => [row.metric_key, Number(row.count)]));
+    },
+  });
+
+  if (agencyLoading || statsLoading || subscriptionLoading || meteredLoading) {
     return (
       <div className="space-y-4">
         <Card>
@@ -75,6 +97,8 @@ export function AgencyUsageOverview({ agencyId }: AgencyUsageOverviewProps) {
     properties: agency.propertyCount ?? 0,
     leads: agency.leadCount ?? 0,
     team_members: agency.members?.length ?? 0,
+    whatsapp_messages: meteredCounts?.["whatsapp_messages"] ?? 0,
+    ai_requests: meteredCounts?.["ai_requests"] ?? 0,
   };
 
   const features = subscription?.plan?.features ?? [];
@@ -117,7 +141,7 @@ export function AgencyUsageOverview({ agencyId }: AgencyUsageOverviewProps) {
         </CardContent>
       </Card>
 
-      {/* Subscription: whatever row -- if any -- exists in `subscriptions`. */}
+      {/* The stored subscription, or the Free plan applied when no row exists. */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -128,9 +152,7 @@ export function AgencyUsageOverview({ agencyId }: AgencyUsageOverviewProps) {
         <CardContent className="space-y-4">
           {!subscription ? (
             <p className="text-sm text-muted-foreground">
-              No subscription on record: this agency has no row in <code>subscriptions</code>.
-              Nothing in the app writes that table, so no plan, price or period applies to them
-              today.
+              No active Free plan was found, and this agency has no subscription row.
             </p>
           ) : (
             <>
@@ -144,7 +166,7 @@ export function AgencyUsageOverview({ agencyId }: AgencyUsageOverviewProps) {
                   </p>
                 </div>
                 <Badge variant="secondary" className="capitalize">
-                  {subscription.status}
+                  {subscription.hasSubscriptionRow ? subscription.status : "Default plan"}
                 </Badge>
               </div>
               <div className="grid gap-4 sm:grid-cols-3 text-sm">
@@ -173,12 +195,17 @@ export function AgencyUsageOverview({ agencyId }: AgencyUsageOverviewProps) {
                   </p>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Sources: <code>subscriptions.status</code>, <code>subscriptions.trial_ends_at</code>
-                , <code>subscriptions.current_period_end</code>,{" "}
-                <code>subscriptions.canceled_at</code> and the referenced <code>plans</code> row.
-                Status is maintained by hand; no payment provider is connected.
-              </p>
+              {subscription.hasSubscriptionRow ? (
+                <p className="text-xs text-muted-foreground">
+                  Sources: <code>subscriptions</code> and its referenced <code>plans</code> row.
+                  Status is maintained by hand; no payment provider is connected.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  The active Free plan is shown because this agency has no row in{" "}
+                  <code>subscriptions</code>. Database limits use the same fallback.
+                </p>
+              )}
             </>
           )}
         </CardContent>
@@ -228,12 +255,9 @@ export function AgencyUsageOverview({ agencyId }: AgencyUsageOverviewProps) {
           <Separator className="my-2" />
 
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
-            <strong>Not enforced.</strong> These limits come from{" "}
-            <code>plan_features.limit_value</code> and are display-only: nothing server-side blocks
-            creating more properties, leads or members, and
-            <code> usage_counters</code> has no rows because no code writes to it. WhatsApp
-            messages, AI requests and storage have no counter at all, so no number is shown for
-            them.
+            <strong>Storage is not metered.</strong> Property, lead and team-member limits are
+            enforced at the database boundary. WhatsApp sends and AI requests are counted and
+            reserved server-side before a provider call; provider failures also count toward usage.
           </div>
         </CardContent>
       </Card>

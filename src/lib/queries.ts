@@ -193,7 +193,8 @@ export interface AgencySubscriptionFeature {
 }
 
 export interface AgencySubscription {
-  status: Tables<"subscriptions">["status"];
+  hasSubscriptionRow: boolean;
+  status: Tables<"subscriptions">["status"] | null;
   trial_ends_at: string | null;
   current_period_end: string | null;
   canceled_at: string | null;
@@ -208,9 +209,8 @@ export interface AgencySubscription {
 }
 
 /**
- * Super-admin view of one agency's subscription row plus the plan it points
- * at. Returns null when the agency has no row in `subscriptions` -- the app
- * never writes that table, so an empty result is the normal state today.
+ * Returns the stored subscription when one exists, or the active Free plan
+ * for agencies without a subscription row, matching the database fallback.
  */
 export async function fetchAgencySubscription(
   agencyId: string,
@@ -223,10 +223,39 @@ export async function fetchAgencySubscription(
     .eq("agency_id", agencyId)
     .maybeSingle();
   if (error) throw error;
-  if (!data) return null;
+  if (!data) {
+    const { data: freePlan, error: freePlanError } = await supabase
+      .from("plans")
+      .select(
+        "id, name, price_pkr, interval, trial_days, plan_features(feature_key, feature_value, included, limit_value)",
+      )
+      .eq("is_active", true)
+      .eq("price_pkr", 0)
+      .order("sort_order")
+      .limit(1)
+      .maybeSingle();
+    if (freePlanError) throw freePlanError;
+    if (!freePlan) return null;
+    return {
+      hasSubscriptionRow: false,
+      status: null,
+      trial_ends_at: null,
+      current_period_end: null,
+      canceled_at: null,
+      plan: {
+        id: freePlan.id,
+        name: freePlan.name,
+        price_pkr: freePlan.price_pkr,
+        interval: freePlan.interval,
+        trial_days: freePlan.trial_days,
+        features: freePlan.plan_features ?? [],
+      },
+    };
+  }
 
   const plan = data.plans;
   return {
+    hasSubscriptionRow: true,
     status: data.status,
     trial_ends_at: data.trial_ends_at,
     current_period_end: data.current_period_end,
@@ -308,7 +337,7 @@ export async function fetchPlatformSubscriptions(): Promise<PlatformSubscription
   });
 }
 
-/** Real per-agency record counts plus the plan limits 0006 declares. */
+/** Per-agency record counts and metered usage with the current plan limits. */
 export interface PlatformUsageRow {
   agencyId: string;
   agencyName: string;
@@ -318,8 +347,16 @@ export interface PlatformUsageRow {
   siteVisits: number;
   media: number;
   conversations: number;
+  whatsappMessages: number;
+  aiRequests: number;
   planName: string | null;
-  limits: { properties: number | null; leads: number | null; teamMembers: number | null };
+  limits: {
+    properties: number | null;
+    leads: number | null;
+    teamMembers: number | null;
+    whatsappMessages: number | null;
+    aiRequests: number | null;
+  };
 }
 
 export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
@@ -332,6 +369,8 @@ export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
     media,
     conversations,
     features,
+    usage,
+    plans,
   ] = await Promise.all([
     supabase.from("agencies").select("id, name").order("name"),
     supabase.from("properties").select("agency_id"),
@@ -341,9 +380,21 @@ export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
     supabase.from("property_media").select("agency_id"),
     supabase.from("conversations").select("agency_id"),
     supabase.from("plan_features").select("plan_id, feature_key, limit_value, included"),
+    supabase.from("usage_counters").select("agency_id,metric_key,count,period_start,period_end"),
+    supabase.from("plans").select("id,name,price_pkr,sort_order,is_active"),
   ]);
   if (error) throw error;
-  for (const q of [properties, leads, profiles, visits, media, conversations, features]) {
+  for (const q of [
+    properties,
+    leads,
+    profiles,
+    visits,
+    media,
+    conversations,
+    features,
+    usage,
+    plans,
+  ]) {
     if (q.error) throw q.error;
   }
 
@@ -352,7 +403,13 @@ export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
 
   const limitsByPlan = new Map<
     string,
-    { properties: number | null; leads: number | null; teamMembers: number | null }
+    {
+      properties: number | null;
+      leads: number | null;
+      teamMembers: number | null;
+      whatsappMessages: number | null;
+      aiRequests: number | null;
+    }
   >();
   for (const f of features.data ?? []) {
     if (!f.included) continue;
@@ -360,13 +417,22 @@ export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
       properties: null,
       leads: null,
       teamMembers: null,
+      whatsappMessages: null,
+      aiRequests: null,
     };
     if (f.feature_key === "properties") entry.properties = f.limit_value;
     if (f.feature_key === "leads") entry.leads = f.limit_value;
     if (f.feature_key === "team_members") entry.teamMembers = f.limit_value;
+    if (f.feature_key === "whatsapp_messages") entry.whatsappMessages = f.limit_value;
+    if (f.feature_key === "ai_requests") entry.aiRequests = f.limit_value;
     limitsByPlan.set(f.plan_id, entry);
   }
 
+  const freePlan = (plans.data ?? [])
+    .filter((plan) => plan.is_active && plan.price_pkr === 0)
+    .sort(
+      (left, right) => left.sort_order - right.sort_order || left.id.localeCompare(right.id),
+    )[0];
   const plansByAgency = new Map(
     await Promise.all(
       (agencies ?? []).map(async (a) => {
@@ -375,7 +441,10 @@ export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
           .select("plans(id, name)")
           .eq("agency_id", a.id)
           .maybeSingle();
-        return [a.id, sub?.plans ?? null] as const;
+        return [
+          a.id,
+          sub?.plans ?? (freePlan ? { id: freePlan.id, name: freePlan.name } : null),
+        ] as const;
       }),
     ),
   );
@@ -391,11 +460,31 @@ export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
       siteVisits: tally(visits.data, a.id),
       media: tally(media.data, a.id),
       conversations: tally(conversations.data, a.id),
+      whatsappMessages: (usage.data ?? [])
+        .filter(
+          (row) =>
+            row.agency_id === a.id &&
+            row.metric_key === "whatsapp_messages" &&
+            Date.parse(row.period_start) <= Date.now() &&
+            Date.parse(row.period_end) > Date.now(),
+        )
+        .reduce((total, row) => total + Number(row.count), 0),
+      aiRequests: (usage.data ?? [])
+        .filter(
+          (row) =>
+            row.agency_id === a.id &&
+            row.metric_key === "ai_requests" &&
+            Date.parse(row.period_start) <= Date.now() &&
+            Date.parse(row.period_end) > Date.now(),
+        )
+        .reduce((total, row) => total + Number(row.count), 0),
       planName: plan?.name ?? null,
       limits: (plan && limitsByPlan.get(plan.id)) || {
         properties: null,
         leads: null,
         teamMembers: null,
+        whatsappMessages: null,
+        aiRequests: null,
       },
     };
   });
@@ -616,7 +705,7 @@ export async function logLeadActivity(
     metadata: (entry.metadata ?? {}) as never,
   });
   if (error) {
-    console.warn(`[lead-activity] could not record a ${entry.type} entry: ${error.message}`);
+    console.warn("[lead-activity] could not record an activity entry");
   }
 }
 
@@ -727,33 +816,6 @@ export async function fetchCheckins(propertyId: string): Promise<CheckinRow[]> {
     .order("scheduled_for", { ascending: false });
   if (error) throw error;
   return data ?? [];
-}
-
-export interface NewCheckinInput {
-  agencyId: string;
-  assignedTo: string | null;
-  propertyId: string;
-  contactType: Tables<"property_checkins">["contact_type"];
-  contactName?: string | undefined;
-  contactPhone: string;
-  channel: Tables<"property_checkins">["channel"];
-  scheduledFor: string; // ISO timestamp
-  createdBy: string;
-}
-
-export async function scheduleCheckin(input: NewCheckinInput): Promise<void> {
-  const { error } = await supabase.from("property_checkins").insert({
-    agency_id: input.agencyId,
-    assigned_to: input.assignedTo,
-    property_id: input.propertyId,
-    contact_type: input.contactType,
-    contact_name: input.contactName ?? null,
-    contact_phone: input.contactPhone,
-    channel: input.channel,
-    scheduled_for: input.scheduledFor,
-    created_by: input.createdBy,
-  });
-  if (error) throw error;
 }
 
 export async function recordCheckinResponse(

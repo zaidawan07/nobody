@@ -19,17 +19,30 @@ export const Route = createFileRoute("/api/cron/property-checkins")({
         const authError = await authenticateCronRequest(request);
         if (authError) return authError;
 
+        // Outbound sends are opt-in. Leave them off until the operator has
+        // confirmed the correct provider, explicit consent collection, and a
+        // supported deployment setup. WhatsApp drafts stay manual in v1.
+        if (process.env["MESSAGING_LIVE_SEND"] !== "true") {
+          return Response.json({ ok: true, liveSend: false, processed: 0 });
+        }
+
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
         const { data: due, error } = await supabaseAdmin
           .from("property_checkins")
-          .select("id, contact_phone, channel, contact_type, property_id")
+          .select("id, contact_phone, channel, contact_type, property_id, consent_at")
           .eq("status", "scheduled")
+          .eq("channel", "sms")
+          .not("consent_at", "is", null)
+          .is("provider_error", null)
           .lte("scheduled_for", new Date().toISOString())
           .limit(50);
 
         if (error) {
-          return Response.json({ ok: false, error: error.message }, { status: 500 });
+          return Response.json(
+            { ok: false, error: "Could not load due check-ins." },
+            { status: 500 },
+          );
         }
         if (!due || due.length === 0) {
           return Response.json({ ok: true, processed: 0 });
@@ -63,6 +76,20 @@ export const Route = createFileRoute("/api/cron/property-checkins")({
             agencyName,
           });
 
+          // Claim the row before sending so two overlapping scheduler runs, or a
+          // retry after a lost response, can never send the same SMS twice. The
+          // marker uses the existing provider_error column; a row left marked
+          // "sending" after a crash is skipped and needs a human to check Twilio.
+          const { data: claimed, error: claimError } = await supabaseAdmin
+            .from("property_checkins")
+            .update({ provider_error: "sending" })
+            .eq("id", checkin.id)
+            .eq("status", "scheduled")
+            .is("provider_error", null)
+            .select("id")
+            .maybeSingle();
+          if (claimError || !claimed) continue;
+
           try {
             await sendCheckinMessage({ to: checkin.contact_phone, channel: checkin.channel, body });
             await supabaseAdmin
@@ -70,12 +97,13 @@ export const Route = createFileRoute("/api/cron/property-checkins")({
               .update({ status: "sent", sent_at: new Date().toISOString(), provider_error: null })
               .eq("id", checkin.id);
             sent += 1;
-          } catch (e) {
+          } catch {
             await supabaseAdmin
               .from("property_checkins")
               .update({
                 status: "failed",
-                provider_error: e instanceof Error ? e.message : "Unknown error",
+                provider_error:
+                  "Message delivery failed. Check provider configuration and delivery status.",
               })
               .eq("id", checkin.id);
             failed += 1;

@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { fetchVisits } from "@/lib/queries";
+import { fetchVisits, type VisitRow } from "@/lib/queries";
 import { VisitDialog } from "@/components/leads/VisitDialog";
 
 export const Route = createFileRoute("/_authenticated/employee/visits")({
@@ -29,7 +29,7 @@ function EmployeeVisitsPage() {
     queryKey: ["visits", agencyId],
     queryFn: () => fetchVisits(agencyId),
   });
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<VisitRow | null>(null);
 
   return (
     <AppShell title="My visits" description="Visits assigned to you.">
@@ -86,7 +86,7 @@ function EmployeeVisitsPage() {
       <VisitDialog
         open={editing !== null}
         onOpenChange={() => setEditing(null)}
-        visit={editing}
+        visit={editing ?? undefined}
         agencyId={agencyId}
         role={access.role ?? "employee"}
       />

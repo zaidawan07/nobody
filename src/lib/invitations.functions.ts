@@ -43,7 +43,11 @@ export const emailConfigured = () =>
   Boolean(process.env["SMTP_HOST"] || process.env["RESEND_API_KEY"]);
 
 const inviteSchema = z.object({
-  email: z.string().email(),
+  email: z
+    .string()
+    .trim()
+    .email()
+    .transform((value) => value.toLowerCase()),
   fullName: z.string().min(1).max(120),
   phone: z.string().trim().max(40).optional(),
   jobTitle: z.string().trim().max(120).optional(),
@@ -66,7 +70,7 @@ async function requireAgencyAdmin(userId: string): Promise<string> {
     .select("role, agency_id")
     .eq("user_id", userId)
     .eq("role", "agency_admin");
-  if (error) throw new Error(error.message);
+  if (error) throw new Error("The request could not be completed. Please try again.");
   const row = (data as RoleRow[] | null)?.[0];
   if (!row?.agency_id) {
     throw new Error("Only an agency admin can manage invitations.");
@@ -79,10 +83,10 @@ async function loadOwnedInvite(invitationId: string, agencyId: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data, error } = await supabaseAdmin
     .from("agency_invitations")
-    .select("id, agency_id, email, status")
+    .select("id, agency_id, email, role, status")
     .eq("id", invitationId)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throw new Error("The request could not be completed. Please try again.");
   if (!data) throw new Error("Invitation not found.");
   if (data.agency_id !== agencyId) {
     throw new Error("You do not have permission to do this.");
@@ -124,67 +128,73 @@ export const inviteTeamMember = createServerFn({ method: "POST" })
       options: { redirectTo: "/accept-invitation" },
     });
     if (invite.error || !invite.data) {
-      throw new Error(invite.error?.message ?? "Could not create the invitation.");
+      throw new Error("Could not create the invitation. Check the address and try again.");
     }
 
     const inviteeId = invite.data.user?.id;
     const actionLink = invite.data.properties?.action_link;
     if (!inviteeId || !actionLink) {
+      if (inviteeId) await supabaseAdmin.auth.admin.deleteUser(inviteeId).catch(() => {});
       throw new Error("The invitation link could not be generated.");
     }
 
-    // profile + role + invite row go through the service-role client, because
-    // 0001's trigger blocks agency_id/status writes from a normal session.
-    const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
-      id: inviteeId,
-      agency_id: agencyId,
-      full_name: data.fullName,
-      email: data.email,
-      phone: data.phone ?? null,
-      job_title: data.jobTitle ?? null,
-    });
-    if (profileError) throw new Error(profileError.message);
+    const rollback = async () => {
+      await supabaseAdmin
+        .from("agency_invitations")
+        .delete()
+        .eq("agency_id", agencyId)
+        .eq("email", data.email)
+        .eq("invited_by", context.userId)
+        .eq("status", "pending");
+      await supabaseAdmin.auth.admin.deleteUser(inviteeId).catch(() => {});
+    };
 
-    const { error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: inviteeId, role: data.role, agency_id: agencyId });
-    if (roleError) throw new Error(roleError.message);
-
-    const { error: inviteError } = await supabaseAdmin.from("agency_invitations").insert({
-      agency_id: agencyId,
-      email: data.email,
-      full_name: data.fullName,
-      phone: data.phone ?? null,
-      job_title: data.jobTitle ?? null,
-      role: data.role,
-      invited_by: context.userId,
-      expires_at: expiresAt,
-      last_sent_at: new Date().toISOString(),
-      send_count: 1,
-    });
-    if (inviteError) throw new Error(inviteError.message);
-
-    // Email only when a transport exists. inviteUserByEmail would send nothing
-    // useful without SMTP, so we only claim it was sent when it was.
-    let emailSent = false;
-    if (emailConfigured()) {
-      const byEmail = await supabaseAdmin.auth.admin.inviteUserByEmail(data.email, {
-        redirectTo: "/accept-invitation",
+    try {
+      // These rows are pre-provisioned so the invitee has the intended role
+      // after accepting. If any later step fails, remove the newly created
+      // auth account and cascade its profile/role rows instead of leaving an
+      // unacceptably orphaned pending account.
+      const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
+        id: inviteeId,
+        agency_id: agencyId,
+        full_name: data.fullName,
+        email: data.email,
+        phone: data.phone ?? null,
+        job_title: data.jobTitle ?? null,
       });
-      if (byEmail.error) {
-        // The link already works; a mail failure is reported, not swallowed.
-        return {
-          actionLink,
-          expiresAt,
-          emailSent: false,
-          emailError: byEmail.error.message,
-          role: data.role,
-        };
-      }
-      emailSent = true;
+      if (profileError) throw new Error("profile setup failed");
+
+      const { error: roleError } = await supabaseAdmin
+        .from("user_roles")
+        .insert({ user_id: inviteeId, role: data.role, agency_id: agencyId });
+      if (roleError) throw new Error("role setup failed");
+
+      const { error: inviteError } = await supabaseAdmin.from("agency_invitations").insert({
+        agency_id: agencyId,
+        email: data.email,
+        full_name: data.fullName,
+        phone: data.phone ?? null,
+        job_title: data.jobTitle ?? null,
+        role: data.role,
+        invited_by: context.userId,
+        expires_at: expiresAt,
+        last_sent_at: new Date().toISOString(),
+        send_count: 1,
+      });
+      if (inviteError) throw new Error("invitation record setup failed");
+    } catch {
+      await rollback();
+      throw new Error("Could not finish invitation setup. Please try again.");
     }
 
-    return { actionLink, expiresAt, emailSent, emailError: null as string | null, role: data.role };
+    // generateLink already created the auth user. Calling inviteUserByEmail
+    // afterward tries to create/send a second invite and can invalidate or
+    // conflict with the link we return. Delivery is copy-link only for now.
+    const emailSent = false;
+    const emailError = emailConfigured()
+      ? "Email delivery is not connected to invitations yet. Copy and share this link."
+      : null;
+    return { actionLink, expiresAt, emailSent, emailError, role: data.role };
   });
 
 /** Re-issues the link for an existing pending invite. */
@@ -206,31 +216,47 @@ export const resendInvitation = createServerFn({ method: "POST" })
       options: { redirectTo: "/accept-invitation" },
     });
     if (fresh.error || !fresh.data) {
-      throw new Error(fresh.error?.message ?? "Could not create the invitation link.");
+      throw new Error("Could not create the invitation link. Please try again.");
     }
 
     // send_count is our own counter; the DB has no default increment, so the
     // new value is computed here rather than assumed.
-    const { data: current } = await supabaseAdmin
+    const { data: current, error: currentError } = await supabaseAdmin
       .from("agency_invitations")
-      .select("send_count, expires_at")
+      .select("send_count")
       .eq("id", invite.id)
-      .single();
-    const nextCount = (current?.send_count ?? 1) + 1;
-    const { error } = await supabaseAdmin
+      .eq("agency_id", agencyId)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (currentError || !current) {
+      throw new Error("The invitation changed before the new link could be saved.");
+    }
+    const nextCount = current.send_count + 1;
+    const nextExpiresAt = new Date(
+      Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const { data: updated, error } = await supabaseAdmin
       .from("agency_invitations")
       .update({
+        expires_at: nextExpiresAt,
         last_sent_at: new Date().toISOString(),
         send_count: nextCount,
       })
-      .eq("id", invite.id);
-    if (error) throw new Error(error.message);
+      .eq("id", invite.id)
+      .eq("agency_id", agencyId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error("The request could not be completed. Please try again.");
+    if (!updated) throw new Error("The invitation changed before the new link could be saved.");
 
     return {
       actionLink: fresh.data.properties.action_link,
-      expiresAt: current?.expires_at ?? null,
-      emailSent: emailConfigured(),
-      emailError: null as string | null,
+      expiresAt: nextExpiresAt,
+      emailSent: false,
+      emailError: emailConfigured()
+        ? "Email delivery is not connected to invitations yet. Copy and share this link."
+        : null,
     };
   });
 
@@ -247,12 +273,69 @@ export const revokeInvitation = createServerFn({ method: "POST" })
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
-      .from("agency_invitations")
-      .update({ status: "revoked", revoked_by: context.userId })
-      .eq("id", invite.id);
-    if (error) throw new Error(error.message);
+    const { data: revoked, error } = await supabaseAdmin.rpc("revoke_agency_invitation", {
+      _invitation_id: invite.id,
+      _agency_id: agencyId,
+      _revoked_by: context.userId,
+    });
+    if (error) throw new Error("The request could not be completed. Please try again.");
+    if (!revoked) throw new Error("That invitation is no longer pending.");
     return { ok: true };
+  });
+
+/** Resolve the pending invite for the authenticated invitee, never by client-supplied email. */
+async function findPendingInvitationForUser(userId: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select("email, agency_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError || !profile?.email || !profile.agency_id) {
+    throw new Error("This invitation is not valid for the current account.");
+  }
+
+  const { data: invite, error } = await supabaseAdmin
+    .from("agency_invitations")
+    .select("id")
+    .eq("agency_id", profile.agency_id)
+    .eq("email", profile.email.toLowerCase())
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (error || !invite) {
+    throw new Error(
+      "This invitation has expired, been revoked, or was already used. Ask your admin for a new invitation.",
+    );
+  }
+  return { supabaseAdmin, invitationId: invite.id };
+}
+
+export const validateInvitationAcceptance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await findPendingInvitationForUser(context.userId);
+    return { valid: true as const };
+  });
+
+export const completeInvitationAcceptance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabaseAdmin, invitationId } = await findPendingInvitationForUser(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("agency_invitations")
+      .update({ status: "accepted", accepted_at: new Date().toISOString() })
+      .eq("id", invitationId)
+      .eq("status", "pending")
+      .gt("expires_at", new Date().toISOString())
+      .select("id")
+      .maybeSingle();
+    if (error || !data) {
+      throw new Error(
+        "The invitation changed or expired before acceptance completed. Contact your admin.",
+      );
+    }
+    return { accepted: true as const };
   });
 
 /** The caller's agency's invitations. Read is admin-only in RLS. */
@@ -265,6 +348,6 @@ export const listInvitations = createServerFn({ method: "GET" })
         "id, email, full_name, role, status, expires_at, accepted_at, last_sent_at, send_count, created_at",
       )
       .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { items: data ?? [] };
   });

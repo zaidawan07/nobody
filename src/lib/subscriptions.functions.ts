@@ -54,7 +54,7 @@ export const assignAgencyPlan = createServerFn({ method: "POST" })
     const { error } = await context.supabase
       .from("subscriptions")
       .upsert(patch, { onConflict: "agency_id" });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -84,6 +84,6 @@ export const setSubscriptionStatus = createServerFn({ method: "POST" })
       .from("subscriptions")
       .update(patch)
       .eq("agency_id", data.agencyId);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });

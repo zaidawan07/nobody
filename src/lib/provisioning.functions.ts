@@ -67,34 +67,29 @@ export const provisionAgency = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (agencyError) throw new Error(agencyError.message);
+    if (agencyError) throw new Error("The request could not be completed. Please try again.");
+
+    // Nothing exists yet, so a failed admin setup must remove the incomplete
+    // tenant rather than leave an agency that nobody can administer.
+    let createdAuthUserId: string | null = null;
+    const rollback = async () => {
+      if (createdAuthUserId) {
+        await supabaseAdmin.auth.admin.deleteUser(createdAuthUserId).catch(() => {
+          // Best effort: deleting the tenant rows still matters more than
+          // replacing the original failure with a cleanup error.
+        });
+      }
+      await supabaseAdmin.from("agencies").delete().eq("id", agency.id);
+    };
 
     const { error: configError } = await supabaseAdmin.from("whatsapp_configs").insert({
       agency_id: agency.id,
       whatsapp_number: data.whatsappNumber ?? null,
     });
-    if (configError) throw new Error(configError.message);
-
-    // Nothing exists yet, so a failed admin means the whole tenant goes away
-    // again rather than sitting there with no one able to open it.
-    //
-    // Rollback also has to remove the AUTH user generateLink just created.
-    // goTrue keeps its own users row outside this schema, so deleting only the
-    // tenant rows would leave an auth account that still "owns" the email --
-    // the next attempt would then fail with "already registered" and the
-    // agency could never be re-provisioned. Only an id we are certain came
-    // from THIS call's generateLink is deleted; a failure before that point
-    // never touches an existing account.
-    let createdAuthUserId: string | null = null;
-    const rollback = async () => {
-      if (createdAuthUserId) {
-        await supabaseAdmin.auth.admin.deleteUser(createdAuthUserId).catch(() => {
-          // Best effort: the tenant rows below still get removed. Surfacing a
-          // delete error here would mask the original failure.
-        });
-      }
-      await supabaseAdmin.from("agencies").delete().eq("id", agency.id);
-    };
+    if (configError) {
+      await rollback();
+      throw new Error("Could not initialize the agency. Please try again.");
+    }
 
     // generateLink({ type: "invite" }) creates the user AND returns
     // action_link without sending anything, so the credential is ours to hand
@@ -113,7 +108,7 @@ export const provisionAgency = createServerFn({ method: "POST" })
     if (!invite.error && adminId) createdAuthUserId = adminId;
     if (invite.error || !adminId || !actionLink) {
       await rollback();
-      throw new Error(invite.error?.message ?? "Could not issue the first admin's invitation.");
+      throw new Error("Could not issue the first admin's invitation. Please try again.");
     }
 
     const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
@@ -125,7 +120,7 @@ export const provisionAgency = createServerFn({ method: "POST" })
     });
     if (profileError) {
       await rollback();
-      throw new Error(profileError.message);
+      throw new Error("The request could not be completed. Please try again.");
     }
 
     const { error: roleError } = await supabaseAdmin
@@ -133,21 +128,16 @@ export const provisionAgency = createServerFn({ method: "POST" })
       .insert({ user_id: adminId, role: "agency_admin", agency_id: agency.id });
     if (roleError) {
       await rollback();
-      throw new Error(roleError.message);
+      throw new Error("The request could not be completed. Please try again.");
     }
 
-    // Email only when a transport exists -- the same rule as
-    // inviteTeamMember, so we never claim a message was sent that was not.
-    // With none configured this is copy-and-share, and the dialog says so.
-    let emailSent = false;
-    let emailError: string | null = null;
-    if (emailConfigured()) {
-      const byEmail = await supabaseAdmin.auth.admin.inviteUserByEmail(data.adminEmail, {
-        redirectTo: "/accept-invitation",
-      });
-      if (byEmail.error) emailError = byEmail.error.message;
-      else emailSent = true;
-    }
+    // generateLink created the auth user and returns the one-time link. Calling
+    // inviteUserByEmail after that attempts a second invite and can conflict
+    // with the link we return. Delivery remains copy-link only for now.
+    const emailSent = false;
+    const emailError = emailConfigured()
+      ? "Email delivery is not connected to invitations yet. Copy and share this link."
+      : null;
 
     return { agencyId: agency.id, actionLink, emailSent, emailError };
   });
@@ -178,7 +168,7 @@ export const setAgencyStatus = createServerFn({ method: "POST" })
       .from("agencies")
       .update({ status: data.status })
       .eq("id", data.agencyId);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -213,7 +203,7 @@ export const reissueFirstAdminLink = createServerFn({ method: "POST" })
       .select("id, agency_id, email, status")
       .eq("id", data.profileId)
       .maybeSingle();
-    if (profileError) throw new Error(profileError.message);
+    if (profileError) throw new Error("The request could not be completed. Please try again.");
     if (!profile) throw new Error("Member not found.");
     if (profile.agency_id !== data.agencyId) {
       throw new Error("That member does not belong to this agency.");
@@ -231,7 +221,7 @@ export const reissueFirstAdminLink = createServerFn({ method: "POST" })
       .eq("agency_id", data.agencyId)
       .eq("role", "agency_admin")
       .maybeSingle();
-    if (roleLookupError) throw new Error(roleLookupError.message);
+    if (roleLookupError) throw new Error("The request could not be completed. Please try again.");
     if (!role) throw new Error("Only a pending agency admin can be re-issued a link.");
 
     // Same mechanism as inviteTeamMember / resendInvitation: generate the link
@@ -243,19 +233,15 @@ export const reissueFirstAdminLink = createServerFn({ method: "POST" })
     });
     const actionLink = fresh.data?.properties?.action_link;
     if (fresh.error || !actionLink) {
-      throw new Error(fresh.error?.message ?? "Could not create a new invitation link.");
+      throw new Error("Could not create a new invitation link. Please try again.");
     }
 
-    // Email only when a transport exists, and never claim it was sent otherwise.
-    let emailSent = false;
-    let emailError: string | null = null;
-    if (emailConfigured()) {
-      const byEmail = await supabaseAdmin.auth.admin.inviteUserByEmail(profile.email, {
-        redirectTo: "/accept-invitation",
-      });
-      if (byEmail.error) emailError = byEmail.error.message;
-      else emailSent = true;
-    }
+    // Keep this copy-link flow consistent with provisionAgency: generating a
+    // link does not send it, and a second invite call can conflict with it.
+    const emailSent = false;
+    const emailError = emailConfigured()
+      ? "Email delivery is not connected to invitations yet. Copy and share this link."
+      : null;
 
     return { actionLink, emailSent, emailError };
   });
@@ -288,7 +274,7 @@ export const setMemberStatus = createServerFn({ method: "POST" })
       supabaseAdmin.from("profiles").select("id, agency_id").eq("id", data.profileId).maybeSingle(),
       context.supabase.rpc("is_super_admin"),
     ]);
-    if (targetError) throw new Error(targetError.message);
+    if (targetError) throw new Error("The request could not be completed. Please try again.");
     if (!target) throw new Error("Member not found.");
 
     if (!isSuper) {
@@ -305,7 +291,7 @@ export const setMemberStatus = createServerFn({ method: "POST" })
       .from("user_roles")
       .select("role")
       .eq("user_id", data.profileId);
-    if (rolesError) throw new Error(rolesError.message);
+    if (rolesError) throw new Error("The request could not be completed. Please try again.");
     if (targetRoles?.some((r) => r.role === "super_admin")) {
       throw new Error("A platform owner's status cannot be changed here.");
     }
@@ -314,6 +300,6 @@ export const setMemberStatus = createServerFn({ method: "POST" })
       .from("profiles")
       .update({ status: data.status })
       .eq("id", data.profileId);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });

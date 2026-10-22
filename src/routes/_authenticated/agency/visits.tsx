@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchVisits, deleteVisit, fetchAssignableMembers } from "@/lib/queries";
+import { fetchVisits, deleteVisit, fetchAssignableMembers, type VisitRow } from "@/lib/queries";
 import { VisitDialog } from "@/components/leads/VisitDialog";
 import { toast } from "sonner";
 
@@ -32,9 +32,10 @@ function AgencyVisitsPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [assigned, setAssigned] = useState<string | undefined>();
   const [page, setPage] = useState(1);
-  const [visitDialog, setVisitDialog] = useState<{ mode: "create" | "edit"; visit?: any } | null>(
-    null,
-  );
+  const [visitDialog, setVisitDialog] = useState<{
+    mode: "create" | "edit";
+    visit?: VisitRow;
+  } | null>(null);
   const { data: members } = useQuery({
     queryKey: ["assignable-members", agencyId],
     queryFn: () => fetchAssignableMembers(agencyId),

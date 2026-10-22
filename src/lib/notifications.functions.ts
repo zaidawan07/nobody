@@ -37,7 +37,7 @@ export const listNotifications = createServerFn({ method: "GET" })
     if (data.before) query = query.lt("created_at", data.before);
 
     const { data: rows, error } = await query;
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     const all = rows ?? [];
     return {
       items: all.slice(0, limit),
@@ -54,7 +54,7 @@ export const unreadNotificationCount = createServerFn({ method: "GET" })
       .select("id", { count: "exact", head: true })
       .eq("user_id", context.userId)
       .is("read_at", null);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { count: count ?? 0 };
   });
 
@@ -80,7 +80,7 @@ export const markNotificationRead = createServerFn({ method: "POST" })
         .from("notifications")
         .update({ read_at: new Date().toISOString() })
         .eq("id", data.id);
-      if (error) throw new Error(error.message);
+      if (error) throw new Error("The request could not be completed. Please try again.");
     }
     return { ok: true };
   });
@@ -94,7 +94,7 @@ export const markAllNotificationsRead = createServerFn({ method: "POST" })
       .update({ read_at: new Date().toISOString() })
       .eq("user_id", context.userId)
       .is("read_at", null);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -234,7 +234,7 @@ export async function notifyUser(supabaseAdmin: SupabaseClient, input: NotifyInp
   };
   const { error } = await supabaseAdmin.from("notifications").insert(row);
   if (error) {
-    console.error(`[notifications] could not deliver to ${input.userId}: ${error.message}`);
+    console.error("[notifications] could not deliver notification");
   }
 }
 

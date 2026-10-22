@@ -38,6 +38,14 @@ const files = [
   "drizzle/migrations/0014_team_invitations.sql",
   "drizzle/migrations/0015_lead_timeline_followups.sql",
   "drizzle/migrations/0016_no_subscription_uses_free_plan.sql",
+  "drizzle/migrations/0017_checkin_consent_and_prepared.sql",
+  "drizzle/migrations/0018_whatsapp_connections.sql",
+  "drizzle/migrations/0019_whatsapp_messaging.sql",
+  "drizzle/migrations/0020_whatsapp_signup_sessions.sql",
+  "drizzle/migrations/0021_whatsapp_followups.sql",
+  "drizzle/migrations/0022_usage_metering.sql",
+  "drizzle/migrations/0023_atomic_invitation_revocation.sql",
+  "drizzle/migrations/0024_fix_property_status_guard_search_path.sql",
   "test/01_seed.sql",
   "test/02_security_tests.sql",
   "test/03_extended_security_tests.sql",
@@ -49,6 +57,10 @@ const files = [
   "test/09_function_lockdown.sql",
   "test/10_invitations.sql",
   "test/11_lead_timeline.sql",
+  "test/12_usage_metering.sql",
+  "test/13_whatsapp_security.sql",
+  "test/14_invitation_lifecycle.sql",
+  "test/15_function_search_path.sql",
 ];
 
 // Split on top-level semicolons while respecting '...', --comments, /* */,
@@ -161,9 +173,14 @@ for (const rel of files) {
       try {
         await db.query(stmt);
       } catch (e) {
-        sectionErrors.push(
-          `${e.message}\n    in: ${stmt.split("\n").slice(0, 2).join(" | ").slice(0, 160)}`,
-        );
+        const preview = stmt
+          .trim()
+          .split("\n")
+          .filter((line) => line.trim() && !line.trim().startsWith("--"))
+          .slice(0, 3)
+          .join(" | ")
+          .slice(0, 240);
+        sectionErrors.push(`${e.message}\n    in: ${preview}`);
       }
     }
     if (expectsError) {
@@ -172,7 +189,8 @@ for (const rel of files) {
         failures.push(`Section "${section.banner}": expected a guarded ERROR, none raised`);
       }
     } else {
-      for (const err of sectionErrors) failures.push(`Section "${section.banner}": ${err}`);
+      for (const err of sectionErrors)
+        failures.push(`${rel} / Section "${section.banner}": ${err}`);
     }
   }
 }

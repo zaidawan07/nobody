@@ -37,12 +37,16 @@ import { Route as AuthenticatedEmployeeLeadsRouteImport } from './routes/_authen
 import { Route as AuthenticatedEmployeeProfileRouteImport } from './routes/_authenticated/employee/profile'
 import { Route as AuthenticatedEmployeeReportsRouteImport } from './routes/_authenticated/employee/reports'
 import { Route as AuthenticatedEmployeeVisitsRouteImport } from './routes/_authenticated/employee/visits'
+import { Route as AuthenticatedEmployeeWhatsappRouteImport } from './routes/_authenticated/employee/whatsapp'
 import { Route as AuthenticatedPlatformIndexRouteImport } from './routes/_authenticated/platform/index'
 import { Route as AuthenticatedPlatformPlansRouteImport } from './routes/_authenticated/platform/plans'
 import { Route as AuthenticatedPlatformSettingsRouteImport } from './routes/_authenticated/platform/settings'
 import { Route as AuthenticatedPlatformSubscriptionsRouteImport } from './routes/_authenticated/platform/subscriptions'
 import { Route as AuthenticatedPlatformUsageRouteImport } from './routes/_authenticated/platform/usage'
 import { Route as ApiCronPropertyCheckinsRouteImport } from './routes/api/cron/property-checkins'
+import { Route as ApiCronWhatsappFollowupsRouteImport } from './routes/api/cron/whatsapp-followups'
+import { Route as ApiStagingIdentityRouteImport } from './routes/api/staging/identity'
+import { Route as ApiWhatsappWebhookRouteImport } from './routes/api/whatsapp/webhook'
 import { Route as AuthenticatedAgencyPropertiesIndexRouteImport } from './routes/_authenticated/agency/properties/index'
 import { Route as AuthenticatedAgencyPropertiesPropertyIdRouteImport } from './routes/_authenticated/agency/properties/$propertyId'
 import { Route as AuthenticatedAgencyPropertiesNewRouteImport } from './routes/_authenticated/agency/properties/new'
@@ -206,6 +210,12 @@ const AuthenticatedEmployeeVisitsRoute =
     path: '/visits',
     getParentRoute: () => AuthenticatedEmployeeRouteRoute,
   } as any)
+const AuthenticatedEmployeeWhatsappRoute =
+  AuthenticatedEmployeeWhatsappRouteImport.update({
+    id: '/whatsapp',
+    path: '/whatsapp',
+    getParentRoute: () => AuthenticatedEmployeeRouteRoute,
+  } as any)
 const AuthenticatedPlatformIndexRoute =
   AuthenticatedPlatformIndexRouteImport.update({
     id: '/',
@@ -239,6 +249,22 @@ const AuthenticatedPlatformUsageRoute =
 const ApiCronPropertyCheckinsRoute = ApiCronPropertyCheckinsRouteImport.update({
   id: '/api/cron/property-checkins',
   path: '/api/cron/property-checkins',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCronWhatsappFollowupsRoute =
+  ApiCronWhatsappFollowupsRouteImport.update({
+    id: '/api/cron/whatsapp-followups',
+    path: '/api/cron/whatsapp-followups',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiStagingIdentityRoute = ApiStagingIdentityRouteImport.update({
+  id: '/api/staging/identity',
+  path: '/api/staging/identity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappWebhookRoute = ApiWhatsappWebhookRouteImport.update({
+  id: '/api/whatsapp/webhook',
+  path: '/api/whatsapp/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAgencyPropertiesIndexRoute =
@@ -310,11 +336,15 @@ export interface FileRoutesByFullPath {
   '/employee/profile': typeof AuthenticatedEmployeeProfileRoute
   '/employee/reports': typeof AuthenticatedEmployeeReportsRoute
   '/employee/visits': typeof AuthenticatedEmployeeVisitsRoute
+  '/employee/whatsapp': typeof AuthenticatedEmployeeWhatsappRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/usage': typeof AuthenticatedPlatformUsageRoute
   '/api/cron/property-checkins': typeof ApiCronPropertyCheckinsRoute
+  '/api/cron/whatsapp-followups': typeof ApiCronWhatsappFollowupsRoute
+  '/api/staging/identity': typeof ApiStagingIdentityRoute
+  '/api/whatsapp/webhook': typeof ApiWhatsappWebhookRoute
   '/agency/': typeof AuthenticatedAgencyIndexRoute
   '/employee/': typeof AuthenticatedEmployeeIndexRoute
   '/platform/': typeof AuthenticatedPlatformIndexRoute
@@ -348,11 +378,15 @@ export interface FileRoutesByTo {
   '/employee/profile': typeof AuthenticatedEmployeeProfileRoute
   '/employee/reports': typeof AuthenticatedEmployeeReportsRoute
   '/employee/visits': typeof AuthenticatedEmployeeVisitsRoute
+  '/employee/whatsapp': typeof AuthenticatedEmployeeWhatsappRoute
   '/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/platform/usage': typeof AuthenticatedPlatformUsageRoute
   '/api/cron/property-checkins': typeof ApiCronPropertyCheckinsRoute
+  '/api/cron/whatsapp-followups': typeof ApiCronWhatsappFollowupsRoute
+  '/api/staging/identity': typeof ApiStagingIdentityRoute
+  '/api/whatsapp/webhook': typeof ApiWhatsappWebhookRoute
   '/agency': typeof AuthenticatedAgencyIndexRoute
   '/employee': typeof AuthenticatedEmployeeIndexRoute
   '/platform': typeof AuthenticatedPlatformIndexRoute
@@ -392,11 +426,15 @@ export interface FileRoutesById {
   '/_authenticated/employee/profile': typeof AuthenticatedEmployeeProfileRoute
   '/_authenticated/employee/reports': typeof AuthenticatedEmployeeReportsRoute
   '/_authenticated/employee/visits': typeof AuthenticatedEmployeeVisitsRoute
+  '/_authenticated/employee/whatsapp': typeof AuthenticatedEmployeeWhatsappRoute
   '/_authenticated/platform/plans': typeof AuthenticatedPlatformPlansRoute
   '/_authenticated/platform/settings': typeof AuthenticatedPlatformSettingsRoute
   '/_authenticated/platform/subscriptions': typeof AuthenticatedPlatformSubscriptionsRoute
   '/_authenticated/platform/usage': typeof AuthenticatedPlatformUsageRoute
   '/api/cron/property-checkins': typeof ApiCronPropertyCheckinsRoute
+  '/api/cron/whatsapp-followups': typeof ApiCronWhatsappFollowupsRoute
+  '/api/staging/identity': typeof ApiStagingIdentityRoute
+  '/api/whatsapp/webhook': typeof ApiWhatsappWebhookRoute
   '/_authenticated/agency/': typeof AuthenticatedAgencyIndexRoute
   '/_authenticated/employee/': typeof AuthenticatedEmployeeIndexRoute
   '/_authenticated/platform/': typeof AuthenticatedPlatformIndexRoute
@@ -436,11 +474,15 @@ export interface FileRouteTypes {
     | '/employee/profile'
     | '/employee/reports'
     | '/employee/visits'
+    | '/employee/whatsapp'
     | '/platform/plans'
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/usage'
     | '/api/cron/property-checkins'
+    | '/api/cron/whatsapp-followups'
+    | '/api/staging/identity'
+    | '/api/whatsapp/webhook'
     | '/agency/'
     | '/employee/'
     | '/platform/'
@@ -474,11 +516,15 @@ export interface FileRouteTypes {
     | '/employee/profile'
     | '/employee/reports'
     | '/employee/visits'
+    | '/employee/whatsapp'
     | '/platform/plans'
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/usage'
     | '/api/cron/property-checkins'
+    | '/api/cron/whatsapp-followups'
+    | '/api/staging/identity'
+    | '/api/whatsapp/webhook'
     | '/agency'
     | '/employee'
     | '/platform'
@@ -517,11 +563,15 @@ export interface FileRouteTypes {
     | '/_authenticated/employee/profile'
     | '/_authenticated/employee/reports'
     | '/_authenticated/employee/visits'
+    | '/_authenticated/employee/whatsapp'
     | '/_authenticated/platform/plans'
     | '/_authenticated/platform/settings'
     | '/_authenticated/platform/subscriptions'
     | '/_authenticated/platform/usage'
     | '/api/cron/property-checkins'
+    | '/api/cron/whatsapp-followups'
+    | '/api/staging/identity'
+    | '/api/whatsapp/webhook'
     | '/_authenticated/agency/'
     | '/_authenticated/employee/'
     | '/_authenticated/platform/'
@@ -541,6 +591,9 @@ export interface RootRouteChildren {
   AcceptInvitationRoute: typeof AcceptInvitationRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiCronPropertyCheckinsRoute: typeof ApiCronPropertyCheckinsRoute
+  ApiCronWhatsappFollowupsRoute: typeof ApiCronWhatsappFollowupsRoute
+  ApiStagingIdentityRoute: typeof ApiStagingIdentityRoute
+  ApiWhatsappWebhookRoute: typeof ApiWhatsappWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -741,6 +794,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEmployeeVisitsRouteImport
       parentRoute: typeof AuthenticatedEmployeeRouteRoute
     }
+    '/_authenticated/employee/whatsapp': {
+      id: '/_authenticated/employee/whatsapp'
+      path: '/whatsapp'
+      fullPath: '/employee/whatsapp'
+      preLoaderRoute: typeof AuthenticatedEmployeeWhatsappRouteImport
+      parentRoute: typeof AuthenticatedEmployeeRouteRoute
+    }
     '/_authenticated/platform/': {
       id: '/_authenticated/platform/'
       path: '/'
@@ -781,6 +841,27 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/property-checkins'
       fullPath: '/api/cron/property-checkins'
       preLoaderRoute: typeof ApiCronPropertyCheckinsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/whatsapp-followups': {
+      id: '/api/cron/whatsapp-followups'
+      path: '/api/cron/whatsapp-followups'
+      fullPath: '/api/cron/whatsapp-followups'
+      preLoaderRoute: typeof ApiCronWhatsappFollowupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/staging/identity': {
+      id: '/api/staging/identity'
+      path: '/api/staging/identity'
+      fullPath: '/api/staging/identity'
+      preLoaderRoute: typeof ApiStagingIdentityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/webhook': {
+      id: '/api/whatsapp/webhook'
+      path: '/api/whatsapp/webhook'
+      fullPath: '/api/whatsapp/webhook'
+      preLoaderRoute: typeof ApiWhatsappWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/agency/properties/': {
@@ -879,6 +960,7 @@ interface AuthenticatedEmployeeRouteRouteChildren {
   AuthenticatedEmployeeProfileRoute: typeof AuthenticatedEmployeeProfileRoute
   AuthenticatedEmployeeReportsRoute: typeof AuthenticatedEmployeeReportsRoute
   AuthenticatedEmployeeVisitsRoute: typeof AuthenticatedEmployeeVisitsRoute
+  AuthenticatedEmployeeWhatsappRoute: typeof AuthenticatedEmployeeWhatsappRoute
   AuthenticatedEmployeeIndexRoute: typeof AuthenticatedEmployeeIndexRoute
   AuthenticatedEmployeePropertiesPropertyIdRoute: typeof AuthenticatedEmployeePropertiesPropertyIdRoute
   AuthenticatedEmployeePropertiesIndexRoute: typeof AuthenticatedEmployeePropertiesIndexRoute
@@ -890,6 +972,7 @@ const AuthenticatedEmployeeRouteRouteChildren: AuthenticatedEmployeeRouteRouteCh
     AuthenticatedEmployeeProfileRoute: AuthenticatedEmployeeProfileRoute,
     AuthenticatedEmployeeReportsRoute: AuthenticatedEmployeeReportsRoute,
     AuthenticatedEmployeeVisitsRoute: AuthenticatedEmployeeVisitsRoute,
+    AuthenticatedEmployeeWhatsappRoute: AuthenticatedEmployeeWhatsappRoute,
     AuthenticatedEmployeeIndexRoute: AuthenticatedEmployeeIndexRoute,
     AuthenticatedEmployeePropertiesPropertyIdRoute:
       AuthenticatedEmployeePropertiesPropertyIdRoute,
@@ -975,6 +1058,9 @@ const rootRouteChildren: RootRouteChildren = {
   AcceptInvitationRoute: AcceptInvitationRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiCronPropertyCheckinsRoute: ApiCronPropertyCheckinsRoute,
+  ApiCronWhatsappFollowupsRoute: ApiCronWhatsappFollowupsRoute,
+  ApiStagingIdentityRoute: ApiStagingIdentityRoute,
+  ApiWhatsappWebhookRoute: ApiWhatsappWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

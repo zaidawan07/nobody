@@ -150,9 +150,7 @@ function NotificationsPage() {
                         {relativeTime(n.created_at)}
                       </span>
                     </div>
-                    {n.body ? (
-                      <p className="mt-1 text-sm text-muted-foreground">{n.body}</p>
-                    ) : null}
+                    {n.body ? <p className="mt-1 text-sm text-muted-foreground">{n.body}</p> : null}
                   </div>
                   {unread ? (
                     <Button

@@ -23,8 +23,8 @@ export function useServiceWorker(): void {
     if (!window.isSecureContext) return;
 
     const register = () => {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((error: unknown) => {
-        console.warn("[pwa] service worker registration failed", error);
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+        console.warn("[pwa] service worker registration failed");
       });
     };
 

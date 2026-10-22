@@ -25,6 +25,8 @@ const LIMITS: { key: string; label: string }[] = [
   { key: "properties", label: "Properties" },
   { key: "leads", label: "Leads" },
   { key: "team_members", label: "Team members" },
+  { key: "whatsapp_messages", label: "WhatsApp messages this period" },
+  { key: "ai_requests", label: "AI replies this period" },
 ];
 
 function formatDate(v: string | null) {
@@ -71,7 +73,9 @@ function SubscriptionPage() {
   }
 
   const plan = subscription?.plan;
-  const isActive = subscription ? ["trialing", "active"].includes(subscription.status) : false;
+  const isActive = subscription?.hasSubscriptionRow
+    ? ["trialing", "active"].includes(subscription.status ?? "")
+    : true;
 
   return (
     <AppShell title="Subscription" description="Your agency's plan and usage.">
@@ -84,12 +88,13 @@ function SubscriptionPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!subscription || !plan ? (
+            {!subscription?.hasSubscriptionRow || !plan ? (
               <Alert>
                 <AlertCircle className="size-4" />
                 <AlertDescription>
-                  This agency has no subscription on record, so no plan or limit applies. The
-                  platform owner assigns plans from <strong>Platform → Subscriptions</strong>.
+                  No paid subscription is assigned. The {plan?.name ?? "default Free"} plan limits
+                  apply until the platform owner assigns another plan from{" "}
+                  <strong>Platform → Subscriptions</strong>.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -161,15 +166,16 @@ function SubscriptionPage() {
               {isActive ? <CheckCircle2 className="size-4" /> : <AlertCircle className="size-4" />}
               <AlertDescription>
                 {isActive
-                  ? "Your plan is active. These limits are enforced by the database: a create that would exceed one is rejected."
+                  ? "Your plan is active. Record limits are enforced by the database; WhatsApp and AI usage is reserved server-side before provider requests."
                   : "Your plan is not currently active. Existing data is untouched, but the limits above still apply to new records — contact the platform owner."}
               </AlertDescription>
             </Alert>
 
             <p className="text-xs text-muted-foreground">
-              WhatsApp messages, AI requests and storage are not counted: no code writes to{" "}
-              <code>usage_counters</code>, so no figure is shown. There is no payment provider
-              connected — plan changes are made by the platform owner, not here.
+              WhatsApp sends and AI requests use the current subscription period (or the UTC
+              calendar month for the default Free plan). Failed provider attempts count toward
+              quotas. Storage is not measured yet. There is no payment provider connected — plan
+              changes are made by the platform owner, not here.
             </p>
           </CardContent>
         </Card>

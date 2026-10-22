@@ -17,6 +17,10 @@ import react from "@vitejs/plugin-react";
 //   node-server                  any Node host, writes .output/
 //   vercel / netlify / railway    those platforms' adapters
 const nitroPreset = process.env["NITRO_PRESET"] ?? "cloudflare-module";
+// OneDrive can hold a reparse-point lock on the default `.output` directory.
+// Keep `.output` as the deploy default, but allow a temporary output path for
+// local builds without asking the sync client to remove its tracked directory.
+const nitroOutputDir = process.env["ESTATEOS_NITRO_OUTPUT_DIR"];
 
 export default defineConfig(async ({ command }) => {
   const plugins = [
@@ -50,6 +54,19 @@ export default defineConfig(async ({ command }) => {
     plugins.push(
       nitro({
         preset: nitroPreset,
+        // Pin the Worker compatibility date to a date Cloudflare already
+        // supports. Nitro's default "latest" can resolve to tomorrow in UTC
+        // and make the generated Worker impossible to preview/deploy today.
+        compatibilityDate: { default: "2026-10-19", cloudflare: "2026-10-19" },
+        ...(nitroOutputDir
+          ? {
+              output: {
+                dir: nitroOutputDir,
+                serverDir: `${nitroOutputDir}/server`,
+                publicDir: `${nitroOutputDir}/public`,
+              },
+            }
+          : {}),
         // Nitro writes these into .output/public/_headers, which Cloudflare
         // Workers applies to responses served by the static-assets binding.
         // /assets/* is content-hashed and safe to hold for a year; /sw.js is

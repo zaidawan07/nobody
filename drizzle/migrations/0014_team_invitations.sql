@@ -54,12 +54,14 @@ CREATE TABLE IF NOT EXISTS public.agency_invitations (
   send_count integer NOT NULL DEFAULT 0,
 
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-
-  -- One live invite per address per agency. A second pending invite for the
-  -- same email would make 'resend' ambiguous; revoke first, then re-invite.
-  CONSTRAINT agency_invitations_one_pending_per_email UNIQUE (agency_id, email, status)
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- One live invite per address per agency. A full UNIQUE constraint including
+-- status would also limit an address to only one revoked/accepted invite ever.
+CREATE UNIQUE INDEX agency_invitations_one_pending_per_email
+  ON public.agency_invitations (agency_id, lower(email))
+  WHERE status = 'pending';
 
 CREATE INDEX IF NOT EXISTS agency_invitations_agency_idx
   ON public.agency_invitations (agency_id, status);

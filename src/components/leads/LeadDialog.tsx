@@ -41,6 +41,7 @@ import {
 import { LeadTimeline } from "./LeadTimeline";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { parsePkrAmount } from "@/lib/pkr-parser";
+import type { Database } from "@/integrations/supabase/types";
 import { useAccess } from "@/hooks/useAccess";
 import { notifyAssignment } from "@/lib/notifications.functions";
 import { useServerFn } from "@tanstack/react-start";
@@ -108,7 +109,7 @@ export function LeadDialog({
       preferred_locality: lead?.preferred_locality ?? "",
       property_type: lead?.property_type ?? "",
       purpose: lead?.purpose ?? "",
-      status: (lead?.status ?? "new") as any,
+      status: lead?.status ?? "new",
       assigned_to: lead?.assigned_to ?? "",
       notes: lead?.notes ?? "",
     },
@@ -127,7 +128,7 @@ export function LeadDialog({
       return;
     }
     try {
-      const payload: any = {
+      const payload = {
         agency_id: agencyId,
         name: v.name || null,
         phone: v.phone || null,
@@ -137,12 +138,12 @@ export function LeadDialog({
         budget_max_pkr: budgetMax,
         preferred_city: v.preferred_city || null,
         preferred_locality: v.preferred_locality || null,
-        property_type: (v.property_type as any) || null,
-        purpose: (v.purpose as any) || null,
+        property_type: (v.property_type as Database["public"]["Enums"]["property_type"]) || null,
+        purpose: (v.purpose as Database["public"]["Enums"]["property_purpose"]) || null,
         status: v.status,
         assigned_to: v.assigned_to || null,
         notes: v.notes || null,
-      };
+      } satisfies Parameters<typeof createLead>[0];
       if (lead) {
         await updateLead(lead.id, payload);
         toast.success("Lead updated");

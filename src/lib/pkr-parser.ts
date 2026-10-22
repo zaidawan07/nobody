@@ -37,7 +37,7 @@ export function parsePkrAmount(input: string): number | null {
     const tok = tokens[i]!;
     const numMatch = /^(-?\d+(?:\.\d+)?)$/.exec(tok);
     if (numMatch) {
-      let value = parseFloat(numMatch[1]!);
+      const value = parseFloat(numMatch[1]!);
       const next = tokens[i + 1];
       let multFound = 0;
       if (next !== undefined) {

@@ -14,12 +14,8 @@ import {
 } from "@/components/ui/table";
 import { fetchPlatformUsage } from "@/lib/queries";
 
-// Super Admin usage overview. Every number here is a row count against the
-// real tables (properties, leads, profiles, site_visits, property_media,
-// conversations) filtered by agency -- nothing is estimated. The "limits"
-// comparison only applies to the three metrics that are actually enforced
-// (see migration 0008); WhatsApp messages, AI requests and storage have no
-// counter anywhere, so no column is shown for them.
+// Super Admin usage overview. Structural counts come from agency-scoped rows;
+// WhatsApp and AI usage comes from the current usage-counter period.
 
 export const Route = createFileRoute("/_authenticated/platform/usage")({
   head: () => ({ meta: [{ title: "Usage — EstateOS" }] }),
@@ -59,9 +55,9 @@ function UsagePage() {
     <AppShell title="Usage" description={`${rows.length} agencies · real row counts`}>
       <div className="mb-4 rounded-lg border border-border p-3 text-sm text-muted-foreground">
         <p>
-          WhatsApp messages, AI requests and storage are <strong>not</strong> counted anywhere: no
-          code writes to <code>usage_counters</code>, so no figure is shown for them. Only
-          properties, leads and team members have enforced limits (migration 0008).
+          WhatsApp sends and AI requests are counted for the current subscription period (or the UTC
+          calendar month for Free agencies) and reserved before provider calls. Failed provider
+          attempts count toward limits. Storage is not metered.
         </p>
       </div>
 
@@ -81,6 +77,8 @@ function UsagePage() {
                 <TableHead>Properties</TableHead>
                 <TableHead>Leads</TableHead>
                 <TableHead>Team members</TableHead>
+                <TableHead>WhatsApp sends</TableHead>
+                <TableHead>AI replies</TableHead>
                 <TableHead>Site visits</TableHead>
                 <TableHead>Photos &amp; videos</TableHead>
                 <TableHead>Conversations</TableHead>
@@ -97,6 +95,8 @@ function UsagePage() {
                   <TableCell>{cell(r.properties, r.limits.properties)}</TableCell>
                   <TableCell>{cell(r.leads, r.limits.leads)}</TableCell>
                   <TableCell>{cell(r.teamMembers, r.limits.teamMembers)}</TableCell>
+                  <TableCell>{cell(r.whatsappMessages, r.limits.whatsappMessages)}</TableCell>
+                  <TableCell>{cell(r.aiRequests, r.limits.aiRequests)}</TableCell>
                   <TableCell>{r.siteVisits}</TableCell>
                   <TableCell>{r.media}</TableCell>
                   <TableCell>{r.conversations}</TableCell>

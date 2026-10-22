@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { fetchLeads } from "@/lib/queries";
+import { fetchLeads, type LeadRow } from "@/lib/queries";
 import { LeadDialog } from "@/components/leads/LeadDialog";
 
 export const Route = createFileRoute("/_authenticated/employee/leads")({
@@ -29,7 +29,7 @@ function EmployeeLeadsPage() {
     queryKey: ["leads", agencyId],
     queryFn: () => fetchLeads(agencyId),
   });
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<LeadRow | null>(null);
 
   return (
     <AppShell title="My leads" description="Leads assigned to you.">
@@ -80,7 +80,7 @@ function EmployeeLeadsPage() {
       <LeadDialog
         open={editing !== null}
         onOpenChange={() => setEditing(null)}
-        lead={editing}
+        lead={editing ?? undefined}
         agencyId={agencyId}
         role={access.role ?? "employee"}
       />

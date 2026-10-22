@@ -6,13 +6,14 @@
 //
 // Usage:
 //   node scripts/apply-migrations.mjs                 # whole chain 0000..
-//   node scripts/apply-migrations.mjs --from 0010     # 0010 and later only
+//   node scripts/apply-migrations.mjs --only 0024 --confirm-project-ref <ref> --confirm-reconciled-schema --confirm-production-write
 //   node scripts/apply-migrations.mjs --from 0010 --dry-run
 //
-// --from exists because the chain is only partly applied on a live project:
-// 0000-0008 landed another way and are not recorded in supabase_migrations,
-// and 0009 is recorded and already ran. Replaying them is pointless and risks
-// re-touching data, so a controlled batch starts at the first unapplied number.
+// --from selects a local filename boundary only; it does NOT identify which
+// migrations are pending on a live database. The current production schema and
+// migration ledger have drifted, so inspect docs/LIVE_SCHEMA_RECONCILIATION_2026-10-20.md
+// and reconcile each migration before any write. Never infer the start point
+// from the ledger or from --dry-run output.
 //
 // --dry-run lists exactly which files would run, in order, without connecting.
 //
@@ -91,7 +92,7 @@ if (allFiles.length === 0) {
   process.exit(2);
 }
 
-// --- --from NNNN and --dry-run -------------------------------------------------
+// --- --from NNNN / --only NNNN and --dry-run ---------------------------------
 const args = process.argv.slice(2);
 function flagValue(name) {
   const i = args.indexOf(name);
@@ -99,6 +100,14 @@ function flagValue(name) {
 }
 if (flagValue("--from") === null && args.includes("--from")) {
   console.error("--from needs a migration number, e.g. --from 0010");
+  process.exit(2);
+}
+if (flagValue("--only") === null && args.includes("--only")) {
+  console.error("--only needs a migration number or exact SQL filename, e.g. --only 0024");
+  process.exit(2);
+}
+if (args.includes("--from") && args.includes("--only")) {
+  console.error("--from and --only are mutually exclusive.");
   process.exit(2);
 }
 const fromRaw = flagValue("--from");
@@ -110,12 +119,30 @@ if (fromRaw !== null) {
     process.exit(2);
   }
 }
+const onlyRaw = flagValue("--only");
 const dryRun = args.includes("--dry-run");
 
-const files = allFiles.filter((f) => {
-  const m = /^(\d+)_/.exec(path.basename(f));
-  return m ? Number.parseInt(m[1], 10) >= from : true;
-});
+let files;
+if (onlyRaw !== null) {
+  const requested = onlyRaw.endsWith(".sql") ? onlyRaw : null;
+  if (!requested && !/^\d{4}$/.test(onlyRaw)) {
+    console.error("--only must be a four-digit migration number or exact SQL filename.");
+    process.exit(2);
+  }
+  files = allFiles.filter((f) => {
+    const basename = path.basename(f);
+    return requested ? basename === requested : basename.startsWith(`${onlyRaw}_`);
+  });
+  if (files.length !== 1) {
+    console.error(`--only must identify exactly one migration; received "${onlyRaw}".`);
+    process.exit(2);
+  }
+} else {
+  files = allFiles.filter((f) => {
+    const m = /^(\d+)_/.exec(path.basename(f));
+    return m ? Number.parseInt(m[1], 10) >= from : true;
+  });
+}
 
 if (files.length === 0) {
   console.error(`No migrations at or after ${String(from).padStart(4, "0")}.`);
@@ -128,6 +155,58 @@ if (dryRun) {
   );
   for (const f of files) console.log(`  ${path.basename(f)}`);
   process.exit(0);
+}
+
+// Require an explicit target-ref confirmation before a live Supabase write.
+// The local dry run intentionally remains connection-free and needs no flag.
+function supabaseProjectRefFromUrl(value) {
+  const u = new URL(value);
+  const direct = /^db\.([a-z0-9]+)\.supabase\.co$/i.exec(u.hostname);
+  if (direct) return direct[1];
+  const pooled = /^postgres\.([a-z0-9]+)$/i.exec(decodeURIComponent(u.username));
+  if (pooled && u.hostname.toLowerCase().endsWith(".pooler.supabase.com")) return pooled[1];
+  return null;
+}
+const parsedConnectionUrl = new URL(connectionUrl);
+const supabaseHost =
+  parsedConnectionUrl.hostname.toLowerCase().endsWith(".supabase.co") ||
+  parsedConnectionUrl.hostname.toLowerCase().endsWith(".supabase.com");
+if (supabaseHost) {
+  const actualRef = supabaseProjectRefFromUrl(connectionUrl);
+  if (!actualRef) {
+    console.error(
+      "Refusing to apply: the Supabase project ref could not be safely inferred from DATABASE_URL.",
+    );
+    process.exit(2);
+  }
+  if (flagValue("--confirm-project-ref") !== actualRef) {
+    console.error(
+      "Refusing to apply migrations to Supabase without an exact target confirmation.\n" +
+        `Expected: --confirm-project-ref ${actualRef}\n` +
+        "Review the live schema and migration plan before confirming. This flag confirms the target only; it does not replace migration review or owner approval.",
+    );
+    process.exit(2);
+  }
+  if (onlyRaw === null) {
+    console.error(
+      "Refusing bulk Supabase migration batches. Use --only <single migration number> after reviewing that migration against the live schema.",
+    );
+    process.exit(2);
+  }
+  if (!args.includes("--confirm-reconciled-schema")) {
+    console.error(
+      "Refusing to write to Supabase without --confirm-reconciled-schema. " +
+        "Reconcile each selected migration against the actual live schema first; the local dry run is not a schema diff.",
+    );
+    process.exit(2);
+  }
+  if (!args.includes("--confirm-production-write")) {
+    console.error(
+      "Refusing to write to Supabase without --confirm-production-write. " +
+        "Use this only after explicit written owner approval and a reviewed migration-by-migration reconciliation.",
+    );
+    process.exit(2);
+  }
 }
 
 console.log(

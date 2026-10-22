@@ -223,7 +223,7 @@ BEGIN
   v := public.count_agency_metric('10000000-0000-0000-0000-000000000001', 'properties');
   IF v <> 5 THEN RAISE EXCEPTION 'FAIL T38: agency A live property count = %', v; END IF;
   v := public.count_agency_metric('10000000-0000-0000-0000-000000000001', 'whatsapp_messages');
-  IF v IS NOT NULL THEN RAISE EXCEPTION 'FAIL T38: uncounted metric leaked a count of %', v; END IF;
+  IF v <> 0 THEN RAISE EXCEPTION 'FAIL T38: expected zero WhatsApp sends, got %', v; END IF;
   RAISE NOTICE 'PASS T38: limits and live counts match the seeded plan features';
 END $$;
 

@@ -57,8 +57,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [
-        ];
+        Relationships: [];
       };
       // TODO(regen): hand-added for migration 0014_team_invitations.sql.
       // Replace this block by regenerating from the live schema; until then it
@@ -122,8 +121,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [
-        ];
+        Relationships: [];
       };
       audit_logs: {
         Row: {
@@ -167,18 +165,18 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "audit_logs_actor_id_fkey"
-            columns: ["actor_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "audit_logs_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "audit_logs_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "audit_logs_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -215,25 +213,25 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "conversation_messages_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "conversation_messages_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "conversation_messages_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "conversations"
-            referencedColumns: ["id"]
+            foreignKeyName: "conversation_messages_conversation_id_fkey";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "conversation_messages_referenced_property_id_fkey"
-            columns: ["referenced_property_id"]
-            isOneToOne: false
-            referencedRelation: "properties"
-            referencedColumns: ["id"]
+            foreignKeyName: "conversation_messages_referenced_property_id_fkey";
+            columns: ["referenced_property_id"];
+            isOneToOne: false;
+            referencedRelation: "properties";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -282,25 +280,25 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "conversations_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "conversations_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "conversations_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "conversations_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "conversations_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
+            foreignKeyName: "conversations_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -341,25 +339,25 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "lead_activities_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_activities_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "lead_activities_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_activities_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "lead_activities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_activities_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -408,32 +406,32 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "lead_followups_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_followups_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "lead_followups_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_followups_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "lead_followups_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_followups_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "lead_followups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_followups_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -497,18 +495,18 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "leads_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "leads_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "leads_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "leads_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -539,11 +537,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "locations_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "locations"
-            referencedColumns: ["id"]
+            foreignKeyName: "locations_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "locations";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -580,11 +578,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "plan_features_plan_id_fkey"
-            columns: ["plan_id"]
-            isOneToOne: false
-            referencedRelation: "plans"
-            referencedColumns: ["id"]
+            foreignKeyName: "plan_features_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -625,8 +623,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [
-        ];
+        Relationships: [];
       };
       notifications: {
         Row: {
@@ -698,8 +695,7 @@ export type Database = {
           claimed_by?: string;
           claimed_at?: string;
         };
-        Relationships: [
-        ];
+        Relationships: [];
       };
       profiles: {
         Row: {
@@ -708,7 +704,8 @@ export type Database = {
           full_name: string | null;
           phone: string | null;
           email: string | null;
-          job_title: string | null;          status: Database["public"]["Enums"]["account_status"];
+          job_title: string | null;
+          status: Database["public"]["Enums"]["account_status"];
           created_at: string;
           updated_at: string;
         };
@@ -736,11 +733,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "profiles_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "profiles_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -867,25 +864,25 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "properties_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "properties_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "properties_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "properties_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "properties_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "properties_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -902,6 +899,10 @@ export type Database = {
           scheduled_for: string;
           status: Database["public"]["Enums"]["checkin_status"];
           sent_at: string | null;
+          consent_at: string | null;
+          consent_recorded_by: string | null;
+          consent_source: string | null;
+          prepared_at: string | null;
           response_text: string | null;
           property_condition: string | null;
           is_vacant: boolean | null;
@@ -921,6 +922,10 @@ export type Database = {
           scheduled_for: string;
           status?: Database["public"]["Enums"]["checkin_status"];
           sent_at?: string | null;
+          consent_at?: string | null;
+          consent_recorded_by?: string | null;
+          consent_source?: string | null;
+          prepared_at?: string | null;
           response_text?: string | null;
           property_condition?: string | null;
           is_vacant?: boolean | null;
@@ -940,6 +945,10 @@ export type Database = {
           scheduled_for?: string;
           status?: Database["public"]["Enums"]["checkin_status"];
           sent_at?: string | null;
+          consent_at?: string | null;
+          consent_recorded_by?: string | null;
+          consent_source?: string | null;
+          prepared_at?: string | null;
           response_text?: string | null;
           property_condition?: string | null;
           is_vacant?: boolean | null;
@@ -949,32 +958,32 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "property_checkins_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "property_checkins_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "property_checkins_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "property_checkins_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "property_checkins_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "property_checkins_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "property_checkins_property_id_fkey"
-            columns: ["property_id"]
-            isOneToOne: false
-            referencedRelation: "properties"
-            referencedColumns: ["id"]
+            foreignKeyName: "property_checkins_property_id_fkey";
+            columns: ["property_id"];
+            isOneToOne: false;
+            referencedRelation: "properties";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -1026,18 +1035,18 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "property_media_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "property_media_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "property_media_property_id_fkey"
-            columns: ["property_id"]
-            isOneToOne: true
-            referencedRelation: "properties"
-            referencedColumns: ["id"]
+            foreignKeyName: "property_media_property_id_fkey";
+            columns: ["property_id"];
+            isOneToOne: true;
+            referencedRelation: "properties";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -1086,32 +1095,32 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "site_visits_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "site_visits_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "site_visits_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "site_visits_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "site_visits_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
+            foreignKeyName: "site_visits_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "site_visits_property_id_fkey"
-            columns: ["property_id"]
-            isOneToOne: false
-            referencedRelation: "properties"
-            referencedColumns: ["id"]
+            foreignKeyName: "site_visits_property_id_fkey";
+            columns: ["property_id"];
+            isOneToOne: false;
+            referencedRelation: "properties";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -1172,25 +1181,25 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "subscriptions_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: true
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "subscriptions_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: true;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "subscriptions_canceled_by_fkey"
-            columns: ["canceled_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "subscriptions_canceled_by_fkey";
+            columns: ["canceled_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "subscriptions_plan_id_fkey"
-            columns: ["plan_id"]
-            isOneToOne: false
-            referencedRelation: "plans"
-            referencedColumns: ["id"]
+            foreignKeyName: "subscriptions_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -1230,11 +1239,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "usage_counters_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "usage_counters_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -1262,11 +1271,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "user_roles_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "user_roles_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: false;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -1327,11 +1336,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "whatsapp_configs_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: true
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
+            foreignKeyName: "whatsapp_configs_agency_id_fkey";
+            columns: ["agency_id"];
+            isOneToOne: true;
+            referencedRelation: "agencies";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -1340,19 +1349,35 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      agency_is_billing_active: { Args: { _agency_id: string; }; Returns: boolean | null };
-      can_access_assigned_record: { Args: { _agency_id: string; _assigned_to: string; }; Returns: boolean | null };
-      can_inspect_agency: { Args: { _agency_id: string; }; Returns: boolean | null };
-      count_agency_metric: { Args: { _agency_id: string; _metric_key: string; }; Returns: number | null };
+      agency_is_billing_active: { Args: { _agency_id: string }; Returns: boolean | null };
+      can_access_assigned_record: {
+        Args: { _agency_id: string; _assigned_to: string };
+        Returns: boolean | null;
+      };
+      can_inspect_agency: { Args: { _agency_id: string }; Returns: boolean | null };
+      count_agency_metric: {
+        Args: { _agency_id: string; _metric_key: string };
+        Returns: number | null;
+      };
       current_agency_id: { Args: never; Returns: string | null };
-      has_role: { Args: { _user_id: string; _role: Database["public"]["Enums"]["app_role"]; }; Returns: boolean | null };
-      is_agency_admin: { Args: { _agency_id: string; }; Returns: boolean | null };
+      has_role: {
+        Args: { _user_id: string; _role: Database["public"]["Enums"]["app_role"] };
+        Returns: boolean | null;
+      };
+      is_agency_admin: { Args: { _agency_id: string }; Returns: boolean | null };
       is_super_admin: { Args: never; Returns: boolean | null };
       reopen_property: {
         Args: { _property_id: string; _reason: string };
         Returns: undefined;
       };
-      plan_limit_for_agency: { Args: { _agency_id: string; _metric_key: string; }; Returns: number | null };
+      plan_limit_for_agency: {
+        Args: { _agency_id: string; _metric_key: string };
+        Returns: number | null;
+      };
+      revoke_agency_invitation: {
+        Args: { _agency_id: string; _invitation_id: string; _revoked_by: string };
+        Returns: boolean;
+      };
     };
     Enums: {
       account_status: "active" | "suspended" | "pending";
@@ -1362,13 +1387,30 @@ export type Database = {
       checkin_contact_type: "owner" | "tenant" | "realtor";
       checkin_status: "scheduled" | "sent" | "responded" | "failed" | "skipped";
       conversation_state: "ai_active" | "human_active" | "closed";
-      lead_status: "new" | "contacted" | "qualified" | "visit_scheduled" | "negotiating" | "won" | "lost";
+      lead_status:
+        "new" | "contacted" | "qualified" | "visit_scheduled" | "negotiating" | "won" | "lost";
       media_kind: "photo" | "video" | "document";
       message_sender: "customer" | "ai" | "employee" | "system";
       plan_interval: "monthly" | "yearly";
       property_purpose: "sale" | "rent";
-      property_status: "available" | "reserved" | "sold" | "rented" | "inactive" | "draft" | "unavailable" | "expired";
-      property_type: "house" | "apartment" | "plot" | "commercial" | "office" | "shop" | "warehouse" | "agricultural";
+      property_status:
+        | "available"
+        | "reserved"
+        | "sold"
+        | "rented"
+        | "inactive"
+        | "draft"
+        | "unavailable"
+        | "expired";
+      property_type:
+        | "house"
+        | "apartment"
+        | "plot"
+        | "commercial"
+        | "office"
+        | "shop"
+        | "warehouse"
+        | "agricultural";
       subscription_status: "trialing" | "active" | "past_due" | "canceled" | "expired";
       visit_status: "requested" | "confirmed" | "completed" | "cancelled" | "no_show";
       whatsapp_connection_status: "not_connected" | "pending" | "connected" | "error";

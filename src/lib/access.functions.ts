@@ -69,12 +69,17 @@ export const claimSuperAdmin = createServerFn({ method: "POST" })
       .insert({ claimed_by: context.userId });
     if (claimError) {
       if (claimError.code === "23505") throw new Error("A platform owner already exists.");
-      throw new Error(claimError.message);
+      throw new Error("The request could not be completed. Please try again.");
     }
 
     const { error } = await supabaseAdmin
       .from("user_roles")
       .insert({ user_id: context.userId, role: "super_admin" });
-    if (error) throw new Error(error.message);
+    if (error) {
+      // Release only the bootstrap row created by this caller. A failed role
+      // insert must not permanently consume the one-time owner seat.
+      await supabaseAdmin.from("platform_bootstrap").delete().eq("claimed_by", context.userId);
+      throw new Error("Could not claim the platform owner seat. Please try again.");
+    }
     return { ok: true };
   });

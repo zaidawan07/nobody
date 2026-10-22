@@ -1,66 +1,51 @@
 // Server-only (see client.server.ts's note on the *.server.ts convention --
 // top-level import of this file is only safe from other .server.ts modules).
 //
-// Provider: Twilio, chosen because one REST API covers both SMS and
-// WhatsApp (just a different `From`/`To` prefix) and needs no SDK -- a
-// plain fetch with Basic Auth. This is the ONE place a different provider
-// (Meta's WhatsApp Cloud API, Gupshup, 360dialog) would get swapped in.
+// Provider: Twilio is retained for optional SMS only. Automated WhatsApp must
+// use the agency's Meta-connected sender; the shared Twilio sender is blocked.
 //
-// Needs three env vars to actually send: TWILIO_ACCOUNT_SID,
-// TWILIO_AUTH_TOKEN, and either TWILIO_SMS_FROM or TWILIO_WHATSAPP_FROM
-// depending on channel. Without them this throws instead of pretending to
-// succeed -- a check-in stays "scheduled"/"failed" rather than silently
-// becoming "sent" when nothing was actually delivered.
+// SMS requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_FROM.
+// Live sends are also guarded by MESSAGING_LIVE_SEND in the cron route.
 
 import type { Database } from "@/integrations/supabase/types";
+import { normalizePhoneE164 } from "@/lib/phone";
 
-type CheckinContactType = Database["public"]["Enums"]["checkin_contact_type"];
 type CheckinChannel = Database["public"]["Enums"]["checkin_channel"];
 
-export function buildCheckinMessage(params: {
-  propertyTitle: string;
-  contactType: CheckinContactType;
-  agencyName: string;
-}): string {
-  const base =
-    `Hi, this is ${params.agencyName}. Quick check-in on "${params.propertyTitle}": ` +
-    `how has it been -- comfortable, and in good condition? ` +
-    `Also, is the property currently empty? If so, reply EMPTY and we'll reach out about next steps.`;
-
-  // A realtor is a referral source, not a resident: the owner/tenant line above
-  // would read wrong, and so would "If you know anyone looking..." -- they are
-  // the one doing the looking.
-  const closing =
-    params.contactType === "realtor"
-      ? "Thanks for the referral -- any new ones looking are always welcome."
-      : "If you know anyone looking, send them our way!";
-
-  return `${base} ${closing}`;
-}
+export { buildCheckinMessage } from "@/lib/checkin-message";
 
 export async function sendCheckinMessage(params: {
   to: string;
   channel: CheckinChannel;
   body: string;
 }): Promise<{ providerMessageId: string }> {
+  if (params.channel === "whatsapp") {
+    throw new Error(
+      "Automated WhatsApp sending is unavailable until this agency connects its own Meta WhatsApp number.",
+    );
+  }
+
   const accountSid = process.env["TWILIO_ACCOUNT_SID"];
   const authToken = process.env["TWILIO_AUTH_TOKEN"];
-  const from =
-    params.channel === "whatsapp"
-      ? process.env["TWILIO_WHATSAPP_FROM"]
-      : process.env["TWILIO_SMS_FROM"];
+  const from = process.env["TWILIO_SMS_FROM"];
 
   if (!accountSid || !authToken || !from) {
     throw new Error(
       `Messaging isn't configured yet: set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and ` +
-        `${params.channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_SMS_FROM"}.`,
+        "TWILIO_SMS_FROM.",
     );
   }
 
-  const prefix = params.channel === "whatsapp" ? "whatsapp:" : "";
+  const to = normalizePhoneE164(params.to);
+  const fromNumber = from.replace(/^whatsapp:/i, "");
+  const fromE164 = normalizePhoneE164(fromNumber);
+  if (!to || !fromE164) {
+    throw new Error("Messaging requires valid E.164 sender and recipient numbers.");
+  }
+
   const body = new URLSearchParams({
-    To: `${prefix}${params.to}`,
-    From: from.startsWith("whatsapp:") ? from : `${prefix}${from}`,
+    To: to,
+    From: fromE164,
     Body: params.body,
   });
 
@@ -78,7 +63,7 @@ export async function sendCheckinMessage(params: {
 
   const json = (await res.json()) as { sid?: string; message?: string };
   if (!res.ok) {
-    throw new Error(json.message ?? `Twilio request failed (${res.status})`);
+    throw new Error(`SMS provider request failed (status ${res.status}).`);
   }
   return { providerMessageId: json.sid ?? "" };
 }

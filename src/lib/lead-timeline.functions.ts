@@ -54,7 +54,7 @@ export const addLeadActivity = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { id: row.id as string };
   });
 
@@ -65,20 +65,16 @@ export const createLeadFollowup = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    // Unlike lead_activities, lead_followups has no BEFORE INSERT trigger to
-    // derive the tenant (0015 only guards lead_activities.is_system). agency_id
-    // is NOT NULL with no default, so an insert that omits it is rejected by
-    // the column before RLS ever runs. Read it from the lead instead of
-    // accepting it from the caller: leads SELECT is itself RLS-bound through
-    // can_access_assigned_record, so a lead the caller may not touch simply
-    // comes back empty here, and the "assigned insert lead_followups" WITH
-    // CHECK re-verifies the pair anyway.
+    // Read the lead first for a clear access error and pass its agency_id to
+    // the insert. Migration 0015's BEFORE INSERT trigger independently derives
+    // and validates that tenant, and the RLS WITH CHECK validates the lead
+    // access again; the caller never supplies either ID.
     const { data: lead, error: leadError } = await supabase
       .from("leads")
       .select("id, agency_id")
       .eq("id", data.leadId)
       .maybeSingle();
-    if (leadError) throw new Error(leadError.message);
+    if (leadError) throw new Error("The request could not be completed. Please try again.");
     if (!lead) throw new Error("You do not have access to this lead.");
 
     const { data: row, error } = await supabase
@@ -93,7 +89,7 @@ export const createLeadFollowup = createServerFn({ method: "POST" })
       })
       .select("id, agency_id, lead_id, assigned_to, due_at, note")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
 
     // Notify the assignee -- but never when they just assigned it to themselves.
     // The recipient is read from the row inside notifyAssignment, so it cannot be
@@ -123,6 +119,6 @@ export const updateLeadFollowup = createServerFn({ method: "POST" })
         cancelled_at: data.status === "cancelled" ? now : null,
       })
       .eq("id", data.followupId);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });

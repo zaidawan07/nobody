@@ -80,7 +80,7 @@ const agencyNav: NavItem[] = [
   { to: "/agency/visits", label: "Site visits", icon: <CalendarCheck className="size-4" /> },
   { to: "/agency/team", label: "Team", icon: <Users className="size-4" /> },
   { to: "/agency/reports", label: "Reports", icon: <BarChart3 className="size-4" /> },
-  { to: "/agency/whatsapp", label: "WhatsApp", icon: <MessageCircle className="size-4" /> },
+  { to: "/agency/whatsapp", label: "WhatsApp inbox", icon: <MessageCircle className="size-4" /> },
   { to: "/agency/ai", label: "AI assistant", icon: <Bot className="size-4" /> },
   { to: "/agency/settings", label: "Agency settings", icon: <Settings className="size-4" /> },
 ];
@@ -90,6 +90,7 @@ const employeeNav: NavItem[] = [
   { to: "/employee/properties", label: "My properties", icon: <Home className="size-4" /> },
   { to: "/employee/leads", label: "My leads", icon: <UserSquare2 className="size-4" /> },
   { to: "/employee/visits", label: "My visits", icon: <CalendarCheck className="size-4" /> },
+  { to: "/employee/whatsapp", label: "My WhatsApp", icon: <MessageCircle className="size-4" /> },
   { to: "/employee/reports", label: "My reports", icon: <BarChart3 className="size-4" /> },
   { to: "/employee/profile", label: "Profile", icon: <User className="size-4" /> },
 ];

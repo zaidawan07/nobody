@@ -1,5 +1,7 @@
 # Implementation Status
 
+> **Historical snapshot.** Several sections below describe the 2026-10-13 base and are no longer current (especially Phases 4–5). See [CURRENT_PILOT_STATUS.md](./CURRENT_PILOT_STATUS.md) for the state verified on 2026-10-19. Live Supabase and production deployment were not reverified.
+
 Running log for the completion pass. Updated as phases land.
 
 **Branch:** `chore/clean-stack` (not pushed, no upstream)

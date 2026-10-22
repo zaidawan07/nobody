@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
+import { useServerFn } from "@tanstack/react-start";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyAccess } from "@/lib/access.functions";
+import {
+  completeInvitationAcceptance,
+  validateInvitationAcceptance,
+} from "@/lib/invitations.functions";
 import { roleHome } from "@/lib/role-home";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +42,8 @@ function AcceptInvitationPage() {
   const [hasSession, setHasSession] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const validateInvite = useServerFn(validateInvitationAcceptance);
+  const completeInvite = useServerFn(completeInvitationAcceptance);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -52,9 +59,30 @@ function AcceptInvitationPage() {
 
   async function onSubmit(values: z.infer<typeof schema>) {
     setFormError(null);
+    try {
+      await validateInvite();
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "This invitation is no longer valid. Ask your admin for a new one.",
+      );
+      return;
+    }
+
     const { error } = await supabase.auth.updateUser({ password: values.password });
     if (error) {
       setFormError(error.message);
+      return;
+    }
+    try {
+      await completeInvite();
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Your password was set, but the invitation could not be completed. Contact your admin.",
+      );
       return;
     }
     setDone(true);

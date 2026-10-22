@@ -56,7 +56,7 @@ export const createPlan = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { planId: plan.id };
   });
 
@@ -70,7 +70,7 @@ export const updatePlan = createServerFn({ method: "POST" })
       .from("plans")
       .update({ ...updates, description: updates.description ?? null })
       .eq("id", id);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -80,7 +80,7 @@ export const deletePlan = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertSuperAdmin(context.supabase as never, context.userId);
     const { error } = await context.supabase.from("plans").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -94,7 +94,7 @@ export const upsertPlanFeature = createServerFn({ method: "POST" })
     const { error } = id
       ? await context.supabase.from("plan_features").update(row).eq("id", id)
       : await context.supabase.from("plan_features").insert({ plan_id, ...row });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -104,7 +104,7 @@ export const deletePlanFeature = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertSuperAdmin(context.supabase as never, context.userId);
     const { error } = await context.supabase.from("plan_features").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -115,7 +115,7 @@ export const reorderPlans = createServerFn({ method: "POST" })
     await assertSuperAdmin(context.supabase as never, context.userId);
     for (const [i, id] of data.orderedIds.entries()) {
       const { error } = await context.supabase.from("plans").update({ sort_order: i }).eq("id", id);
-      if (error) throw new Error(error.message);
+      if (error) throw new Error("The request could not be completed. Please try again.");
     }
     return { ok: true };
   });

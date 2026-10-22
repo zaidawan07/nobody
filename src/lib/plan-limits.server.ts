@@ -29,7 +29,7 @@ export async function fetchPlanLimit(
     _agency_id: agencyId,
     _metric_key: metricKey,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error("Could not check the agency plan limit. Please try again.");
   if (data === null || data === undefined) return null;
   const n = Number(data);
   return Number.isFinite(n) ? n : null;
@@ -47,7 +47,7 @@ export async function fetchPlanUsage(
     _agency_id: agencyId,
     _metric_key: metricKey,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error("Could not check the agency plan limit. Please try again.");
   const count = typeof data === "number" ? data : null;
   return { limit, count, unlimited };
 }
@@ -65,7 +65,7 @@ export async function assertPlanLimit(
     _agency_id: agencyId,
     _metric_key: metricKey,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error("Could not check the agency plan limit. Please try again.");
   const count = typeof data === "number" ? data : 0;
 
   if (count >= limit) {

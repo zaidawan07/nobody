@@ -7,9 +7,13 @@
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "preview": "vite preview",
+    "preview": "npx --yes wrangler dev --config .output/server/wrangler.json --ip 127.0.0.1",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:safety": "node --test test/migration-runner-safety.test.mjs test/pilot-env.test.mjs test/messaging-contracts.test.mjs",
+    "test:unit": "tsx --test test/whatsapp-followup-retry.test.ts test/whatsapp-optout.test.ts test/whatsapp-meta-events.test.ts test/error-capture.test.ts test/webhook-guards.test.ts",
+    "test:staging:whatsapp": "node scripts/staging/whatsapp-webhook-smoke.mjs",
+    "check:pilot-env": "node scripts/check-pilot-env.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

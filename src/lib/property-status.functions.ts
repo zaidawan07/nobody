@@ -51,7 +51,7 @@ export const setPropertyStatusSafe = createServerFn({ method: "POST" })
       .select("status, agency_id")
       .eq("id", data.id)
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     // RLS: a caller from another agency sees no row rather than a wrong one.
     if (!current) throw new Error("Property not found.");
 
@@ -67,7 +67,7 @@ export const setPropertyStatusSafe = createServerFn({ method: "POST" })
         .update({ status: data.status })
         .eq("id", data.id)
         .eq("status", current.status);
-      if (updateError) throw new Error(updateError.message);
+      if (updateError) throw new Error("The request could not be completed. Please try again.");
     }
     return { ok: true, status: data.status };
   });
@@ -92,7 +92,7 @@ export const reopenProperty = createServerFn({ method: "POST" })
       _property_id: data.id,
       _reason: data.reason.trim(),
     });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
     return { ok: true };
   });
 
@@ -113,7 +113,7 @@ export const checkAvailability = createServerFn({ method: "POST" })
       .from("properties")
       .select("id, status")
       .in("id", data.ids);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error("The request could not be completed. Please try again.");
 
     // RLS already scoped this to the caller's agency, so a caller cannot probe
     // another agency's inventory at all.

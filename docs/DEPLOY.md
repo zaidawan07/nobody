@@ -102,11 +102,13 @@ The end of a build also prints two other commands:
 - `npx nitro deploy --prebuilt` — Nitro's own deploy path for the selected
   preset. `nitro` is a dev dependency, so this resolves locally; it ships the
   same artifacts as `wrangler deploy`.
-- `npx vite preview` — serves the built output locally. It is a real production
-  build, so it is the closest look at the deployed client short of deploying
-  (and unlike `npm run dev`, the production-only paths such as service-worker
-  registration are active). `npm run preview` is the same thing. Not exercised
-  in this repo yet.
+- `npm run preview` — runs the generated Cloudflare Worker locally with
+  Wrangler using `.output/server/wrangler.json`. This is the appropriate preview
+  for the `cloudflare-module` preset; Vite's generic `vite preview` looks for a
+  `dist/server/server.js` artifact that this Nitro build does not generate.
+  Wrangler is fetched by `npx --yes` on demand and binds to `127.0.0.1` by
+  default. Requires the production build to have completed first. This preview
+  was exercised locally: `/` and `/api/health` both returned HTTP 200.
 
 Use one of `npx wrangler deploy` or `npx nitro deploy`, not both, so it is
 always clear which tool last touched the worker.
@@ -139,8 +141,8 @@ Migrations are not part of the build and not part of the deploy. They are
 applied separately, on purpose:
 
 ```bash
-node scripts/apply-migrations.mjs --dry-run          # list what would run
-node scripts/apply-migrations.mjs --from 0014        # a controlled batch
+node scripts/apply-migrations.mjs --dry-run          # list local files only; no connection
+node scripts/apply-migrations.mjs --only 0014 --confirm-project-ref <exact-ref> --confirm-reconciled-schema --confirm-production-write  # one reviewed migration only
 ```
 
 `drizzle-kit migrate` cannot be used for this project:
@@ -148,18 +150,17 @@ node scripts/apply-migrations.mjs --from 0014        # a controlled batch
 would replay those two and never reach the rest. The script applies the numbered
 files directly instead.
 
-On the live project `0000`–`0013` are applied, so `--from 0014` is the current
-starting point; anything earlier would only replay migrations that already ran.
-`--dry-run` prints the exact list without connecting. The whole batch runs in a
-single transaction and rolls back on any error, so a failure cannot leave the
-schema half-migrated.
+The live schema and migration ledger are currently inconsistent: the ledger records only `0009`, while several objects introduced by `0010`–`0013` exist and multiple objects introduced by later migrations are absent. Do **not** assume `--from 0014` is safe based on the ledger or a file-only dry run. Reconcile each migration against live definitions first; see `docs/LIVE_SCHEMA_RECONCILIATION_2026-10-20.md`. `--dry-run` prints local files without connecting. The batch runs in a single transaction and rolls back on error, but that does not make replaying already-applied DDL safe.
 
 Two rules:
 
 - Applying anything to the live project changes production and needs explicit
-  written sign-off. `0014`, `0015` and
-  `drizzle/migrations/0016_no_subscription_uses_free_plan.sql` are written and
-  tested locally but are **not applied**.
+  written sign-off. Migrations `0014`–`0024` require migration-by-migration
+  reconciliation; do not infer that the whole range is unapplied. The runner
+  refuses Supabase writes unless `--confirm-project-ref` exactly matches the
+  project ref inferred from the connection URL, `--confirm-reconciled-schema`,
+  and `--confirm-production-write` are supplied. These flags are safeguards only;
+  they do not prove the reconciliation is correct or replace explicit written owner approval.
 - Nothing links the two operations: a deploy does not apply migrations, and a
   migration does not deploy code. Either can be rolled back without the other.
 

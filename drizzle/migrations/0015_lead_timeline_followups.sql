@@ -118,7 +118,19 @@ END $$;
 CREATE OR REPLACE FUNCTION public.guard_activity_provenance()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF NEW.is_system AND auth.role() NOT IN ('service_role', 'postgres') THEN
+  -- A client may choose the activity type, so protect the system type as well
+  -- as the is_system flag. Otherwise an authenticated user could forge a
+  -- system-looking timeline row while leaving is_system false.
+  IF NEW.type = 'system'
+     AND auth.role() IS DISTINCT FROM 'service_role'
+     AND auth.role() IS DISTINCT FROM 'postgres' THEN
+    RAISE EXCEPTION 'System-authored timeline entries can only be written by the server'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF NEW.is_system
+     AND auth.role() IS DISTINCT FROM 'service_role'
+     AND auth.role() IS DISTINCT FROM 'postgres' THEN
     RAISE EXCEPTION 'System-authored timeline entries can only be written by the server'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
@@ -141,11 +153,60 @@ CREATE TRIGGER set_updated_at_lead_followups
   BEFORE UPDATE ON public.lead_followups
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- The lead, not the caller, determines the tenant. Also prevent an agency
+-- member from assigning a follow-up to a profile in another agency or forging
+-- its creator. Service-role writes (for system jobs) keep their supplied author.
+CREATE OR REPLACE FUNCTION public.guard_lead_followup_scope()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_agency_id uuid;
+BEGIN
+  SELECT l.agency_id INTO v_agency_id
+    FROM public.leads l
+   WHERE l.id = NEW.lead_id;
+
+  IF v_agency_id IS NULL THEN
+    RAISE EXCEPTION 'Follow-up lead not found'
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  NEW.agency_id := v_agency_id;
+
+  IF NEW.assigned_to IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.profiles p
+     WHERE p.id = NEW.assigned_to AND p.agency_id = v_agency_id
+  ) THEN
+    RAISE EXCEPTION 'Follow-up assignee must belong to the lead agency'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF TG_OP = 'INSERT' AND auth.role() = 'authenticated' THEN
+    NEW.created_by := auth.uid();
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.lead_id IS DISTINCT FROM OLD.lead_id THEN
+      RAISE EXCEPTION 'A follow-up cannot be moved to another lead'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.created_by IS DISTINCT FROM OLD.created_by THEN
+      RAISE EXCEPTION 'A follow-up creator cannot be changed'
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS guard_lead_followup_scope ON public.lead_followups;
+CREATE TRIGGER guard_lead_followup_scope
+  BEFORE INSERT OR UPDATE ON public.lead_followups
+  FOR EACH ROW EXECUTE FUNCTION public.guard_lead_followup_scope();
+
 -- ---------- 6. grants ----------
 REVOKE EXECUTE ON FUNCTION public.can_access_assigned_lead(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.can_access_assigned_lead(uuid, uuid) TO authenticated, service_role;
 
 REVOKE EXECUTE ON FUNCTION public.guard_activity_provenance() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.guard_lead_followup_scope() FROM PUBLIC, anon, authenticated;
 
 -- ---------- 7. RLS ----------
 -- Both tables: the assignee sees their own lead's rows, the agency's admins see

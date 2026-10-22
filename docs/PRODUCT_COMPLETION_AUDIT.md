@@ -1,5 +1,7 @@
 # Product Completion Audit
 
+> **Historical database snapshot.** This audit's live counts and feature assessment are from an earlier review and are not current verification. See [CURRENT_PILOT_STATUS.md](./CURRENT_PILOT_STATUS.md) for the latest local checks and unresolved live-system gates.
+
 **Phase 0 of the completion pass.**
 
 - Branch: `chore/clean-stack` — 9 commits, **not pushed**, no upstream

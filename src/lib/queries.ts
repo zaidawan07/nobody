@@ -1,0 +1,1477 @@
+import { supabase } from "@/integrations/supabase/client";
+import type { Tables, Database } from "@/integrations/supabase/types";
+import { isAvailableStatus } from "@/lib/property-availability";
+
+// Every function here runs as the signed-in user via the browser client, so
+// Postgres RLS (migrations 0000 + 0001) is what actually scopes the results
+// -- an employee calling fetchProperties() simply gets fewer rows back than
+// an agency admin calling the same function. Nothing here re-implements
+// access control; it only shapes what RLS already returned for display.
+
+async function idsToMap(
+  table: "properties" | "leads" | "profiles",
+  labelColumn: string,
+  ids: (string | null)[],
+): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(ids.filter((id): id is string => !!id)));
+  if (unique.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from(table)
+    .select(`id, ${labelColumn}` as "id")
+    .in("id", unique);
+  if (error) throw error;
+  const out = new Map<string, string>();
+  for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+    out.set(row["id"] as string, (row[labelColumn] as string | null) ?? "Untitled");
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Platform (super admin)
+// ---------------------------------------------------------------------------
+
+export interface PlatformStats {
+  total: number;
+  active: number;
+  suspended: number;
+  pending: number;
+}
+
+export async function fetchPlatformStats(): Promise<PlatformStats> {
+  const { data, error } = await supabase.from("agencies").select("status");
+  if (error) throw error;
+  const rows = data ?? [];
+  return {
+    total: rows.length,
+    active: rows.filter((r) => r.status === "active").length,
+    suspended: rows.filter((r) => r.status === "suspended").length,
+    pending: rows.filter((r) => r.status === "pending").length,
+  };
+}
+
+export interface AgencyListRow extends Tables<"agencies"> {
+  member_count: number;
+  property_count: number;
+}
+
+export async function fetchAgencies(): Promise<AgencyListRow[]> {
+  const { data: agencies, error } = await supabase
+    .from("agencies")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  if (!agencies?.length) return [];
+
+  const [{ data: profiles, error: profilesError }, { data: properties, error: propertiesError }] =
+    await Promise.all([
+      supabase.from("profiles").select("agency_id"),
+      supabase.from("properties").select("agency_id"),
+    ]);
+  if (profilesError) throw profilesError;
+  if (propertiesError) throw propertiesError;
+
+  const memberCounts = countBy(profiles ?? []);
+  const propertyCounts = countBy(properties ?? []);
+
+  return agencies.map((a) => ({
+    ...a,
+    member_count: memberCounts[a.id] ?? 0,
+    property_count: propertyCounts[a.id] ?? 0,
+  }));
+}
+
+function countBy(rows: { agency_id: string | null }[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of rows) {
+    if (!row.agency_id) continue;
+    out[row.agency_id] = (out[row.agency_id] ?? 0) + 1;
+  }
+  return out;
+}
+
+export interface AgencyDetailMember extends Pick<
+  Tables<"profiles">,
+  "id" | "full_name" | "email" | "status"
+> {
+  role: Tables<"user_roles">["role"] | null;
+}
+
+export interface AgencyDetail extends Tables<"agencies"> {
+  members: AgencyDetailMember[];
+  propertyCount: number;
+  leadCount: number;
+}
+
+export async function fetchAgencyDetail(agencyId: string): Promise<AgencyDetail | null> {
+  const [
+    { data: agency, error },
+    { data: members, error: membersError },
+    { data: roles, error: rolesError },
+    { data: properties, error: propertiesError },
+    { data: leads, error: leadsError },
+  ] = await Promise.all([
+    supabase.from("agencies").select("*").eq("id", agencyId).maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, status")
+      .eq("agency_id", agencyId)
+      .order("full_name"),
+    supabase.from("user_roles").select("user_id, role").eq("agency_id", agencyId),
+    supabase.from("properties").select("id").eq("agency_id", agencyId),
+    supabase.from("leads").select("id").eq("agency_id", agencyId),
+  ]);
+  if (error) throw error;
+  if (membersError) throw membersError;
+  if (rolesError) throw rolesError;
+  if (propertiesError) throw propertiesError;
+  if (leadsError) throw leadsError;
+  if (!agency) return null;
+
+  // Role comes from user_roles, not profiles (there is no profiles.role column),
+  // so the page can tell a pending agency admin from a pending employee.
+  const roleByUser = new Map((roles ?? []).map((r) => [r.user_id, r.role]));
+
+  return {
+    ...agency,
+    members: (members ?? []).map((m) => ({ ...m, role: roleByUser.get(m.id) ?? null })),
+    propertyCount: properties?.length ?? 0,
+    leadCount: leads?.length ?? 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Agency (agency admin)
+// ---------------------------------------------------------------------------
+
+export interface AgencyStats {
+  totalProperties: number;
+  availableProperties: number;
+  leads: number;
+  upcomingVisits: number;
+  employees: number;
+}
+
+export async function fetchAgencyStats(agencyId: string): Promise<AgencyStats> {
+  const [
+    { data: properties, error: pErr },
+    { data: leads, error: lErr },
+    { data: visits, error: vErr },
+    { data: roles, error: rErr },
+  ] = await Promise.all([
+    supabase.from("properties").select("status").eq("agency_id", agencyId),
+    supabase.from("leads").select("id").eq("agency_id", agencyId),
+    supabase
+      .from("site_visits")
+      .select("id")
+      .eq("agency_id", agencyId)
+      .in("status", ["requested", "confirmed"]),
+    supabase.from("user_roles").select("role").eq("agency_id", agencyId),
+  ]);
+  if (pErr) throw pErr;
+  if (lErr) throw lErr;
+  if (vErr) throw vErr;
+  if (rErr) throw rErr;
+
+  return {
+    totalProperties: properties?.length ?? 0,
+    // The single availability rule, not a literal here: this counter and every
+    // other availability decision must agree, or a property can be counted as
+    // unavailable on one page and the same page will offer it as live elsewhere.
+    availableProperties: properties?.filter((p) => isAvailableStatus(p.status)).length ?? 0,
+    leads: leads?.length ?? 0,
+    upcomingVisits: visits?.length ?? 0,
+    employees: roles?.filter((r) => r.role === "employee").length ?? 0,
+  };
+}
+
+export interface AgencySubscriptionFeature {
+  feature_key: string;
+  feature_value: string | null;
+  included: boolean;
+  limit_value: number | null;
+}
+
+export interface AgencySubscription {
+  hasSubscriptionRow: boolean;
+  status: Tables<"subscriptions">["status"] | null;
+  trial_ends_at: string | null;
+  current_period_end: string | null;
+  canceled_at: string | null;
+  plan: {
+    id: string;
+    name: string;
+    price_pkr: number;
+    interval: Tables<"plans">["interval"];
+    trial_days: number;
+    features: AgencySubscriptionFeature[];
+  } | null;
+}
+
+/**
+ * Returns the stored subscription when one exists, or the active Free plan
+ * for agencies without a subscription row, matching the database fallback.
+ */
+export async function fetchAgencySubscription(
+  agencyId: string,
+): Promise<AgencySubscription | null> {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select(
+      "status, trial_ends_at, current_period_end, canceled_at, plans(id, name, price_pkr, interval, trial_days, plan_features(feature_key, feature_value, included, limit_value))",
+    )
+    .eq("agency_id", agencyId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    const { data: freePlan, error: freePlanError } = await supabase
+      .from("plans")
+      .select(
+        "id, name, price_pkr, interval, trial_days, plan_features(feature_key, feature_value, included, limit_value)",
+      )
+      .eq("is_active", true)
+      .eq("price_pkr", 0)
+      .order("sort_order")
+      .limit(1)
+      .maybeSingle();
+    if (freePlanError) throw freePlanError;
+    if (!freePlan) return null;
+    return {
+      hasSubscriptionRow: false,
+      status: null,
+      trial_ends_at: null,
+      current_period_end: null,
+      canceled_at: null,
+      plan: {
+        id: freePlan.id,
+        name: freePlan.name,
+        price_pkr: freePlan.price_pkr,
+        interval: freePlan.interval,
+        trial_days: freePlan.trial_days,
+        features: freePlan.plan_features ?? [],
+      },
+    };
+  }
+
+  const plan = data.plans;
+  return {
+    hasSubscriptionRow: true,
+    status: data.status,
+    trial_ends_at: data.trial_ends_at,
+    current_period_end: data.current_period_end,
+    canceled_at: data.canceled_at,
+    plan: plan
+      ? {
+          id: plan.id,
+          name: plan.name,
+          price_pkr: plan.price_pkr,
+          interval: plan.interval,
+          trial_days: plan.trial_days,
+          features: plan.plan_features ?? [],
+        }
+      : null,
+  };
+}
+
+/** Minimal plan list for pickers (subscription management). */
+export async function fetchPlansSummary(): Promise<
+  {
+    id: string;
+    name: string;
+    price_pkr: number;
+    interval: Tables<"plans">["interval"];
+    is_active: boolean;
+  }[]
+> {
+  const { data, error } = await supabase
+    .from("plans")
+    .select("id, name, price_pkr, interval, is_active")
+    .order("sort_order");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Per-agency plan + subscription state, for the Super Admin subscriptions page. */
+export interface PlatformSubscriptionRow {
+  agencyId: string;
+  agencyName: string;
+  agencyStatus: Tables<"agencies">["status"];
+  subscriptionId: string | null;
+  subscriptionStatus: Tables<"subscriptions">["status"] | null;
+  planId: string | null;
+  planName: string | null;
+  planPricePkr: number | null;
+  planInterval: Tables<"plans">["interval"] | null;
+  trialEndsAt: string | null;
+  periodEndsAt: string | null;
+}
+
+export async function fetchPlatformSubscriptions(): Promise<PlatformSubscriptionRow[]> {
+  const [{ data: agencies, error }, { data: subs, error: subsError }] = await Promise.all([
+    supabase.from("agencies").select("id, name, status").order("name"),
+    supabase
+      .from("subscriptions")
+      .select(
+        "id, agency_id, status, trial_ends_at, current_period_end, plans(id, name, price_pkr, interval)",
+      ),
+  ]);
+  if (error) throw error;
+  if (subsError) throw subsError;
+
+  const byAgency = new Map((subs ?? []).map((s) => [s.agency_id, s]));
+  return (agencies ?? []).map((a) => {
+    const s = byAgency.get(a.id);
+    return {
+      agencyId: a.id,
+      agencyName: a.name,
+      agencyStatus: a.status,
+      subscriptionId: s?.id ?? null,
+      subscriptionStatus: s?.status ?? null,
+      planId: s?.plans?.id ?? null,
+      planName: s?.plans?.name ?? null,
+      planPricePkr: s?.plans?.price_pkr ?? null,
+      planInterval: s?.plans?.interval ?? null,
+      trialEndsAt: s?.trial_ends_at ?? null,
+      periodEndsAt: s?.current_period_end ?? null,
+    };
+  });
+}
+
+/** Per-agency record counts and metered usage with the current plan limits. */
+export interface PlatformUsageRow {
+  agencyId: string;
+  agencyName: string;
+  properties: number;
+  leads: number;
+  teamMembers: number;
+  siteVisits: number;
+  media: number;
+  conversations: number;
+  whatsappMessages: number;
+  aiRequests: number;
+  planName: string | null;
+  limits: {
+    properties: number | null;
+    leads: number | null;
+    teamMembers: number | null;
+    whatsappMessages: number | null;
+    aiRequests: number | null;
+  };
+}
+
+export async function fetchPlatformUsage(): Promise<PlatformUsageRow[]> {
+  const [
+    { data: agencies, error },
+    properties,
+    leads,
+    profiles,
+    visits,
+    media,
+    conversations,
+    features,
+    usage,
+    plans,
+  ] = await Promise.all([
+    supabase.from("agencies").select("id, name").order("name"),
+    supabase.from("properties").select("agency_id"),
+    supabase.from("leads").select("agency_id"),
+    supabase.from("profiles").select("agency_id"),
+    supabase.from("site_visits").select("agency_id"),
+    supabase.from("property_media").select("agency_id"),
+    supabase.from("conversations").select("agency_id"),
+    supabase.from("plan_features").select("plan_id, feature_key, limit_value, included"),
+    supabase.from("usage_counters").select("agency_id,metric_key,count,period_start,period_end"),
+    supabase.from("plans").select("id,name,price_pkr,sort_order,is_active"),
+  ]);
+  if (error) throw error;
+  for (const q of [
+    properties,
+    leads,
+    profiles,
+    visits,
+    media,
+    conversations,
+    features,
+    usage,
+    plans,
+  ]) {
+    if (q.error) throw q.error;
+  }
+
+  const tally = (rows: { agency_id: string | null }[] | null, id: string) =>
+    (rows ?? []).filter((r) => r.agency_id === id).length;
+
+  const limitsByPlan = new Map<
+    string,
+    {
+      properties: number | null;
+      leads: number | null;
+      teamMembers: number | null;
+      whatsappMessages: number | null;
+      aiRequests: number | null;
+    }
+  >();
+  for (const f of features.data ?? []) {
+    if (!f.included) continue;
+    const entry = limitsByPlan.get(f.plan_id) ?? {
+      properties: null,
+      leads: null,
+      teamMembers: null,
+      whatsappMessages: null,
+      aiRequests: null,
+    };
+    if (f.feature_key === "properties") entry.properties = f.limit_value;
+    if (f.feature_key === "leads") entry.leads = f.limit_value;
+    if (f.feature_key === "team_members") entry.teamMembers = f.limit_value;
+    if (f.feature_key === "whatsapp_messages") entry.whatsappMessages = f.limit_value;
+    if (f.feature_key === "ai_requests") entry.aiRequests = f.limit_value;
+    limitsByPlan.set(f.plan_id, entry);
+  }
+
+  const freePlan = (plans.data ?? [])
+    .filter((plan) => plan.is_active && plan.price_pkr === 0)
+    .sort(
+      (left, right) => left.sort_order - right.sort_order || left.id.localeCompare(right.id),
+    )[0];
+  const plansByAgency = new Map(
+    await Promise.all(
+      (agencies ?? []).map(async (a) => {
+        const { data: sub } = await supabase
+          .from("subscriptions")
+          .select("plans(id, name)")
+          .eq("agency_id", a.id)
+          .maybeSingle();
+        return [
+          a.id,
+          sub?.plans ?? (freePlan ? { id: freePlan.id, name: freePlan.name } : null),
+        ] as const;
+      }),
+    ),
+  );
+
+  return (agencies ?? []).map((a) => {
+    const plan = plansByAgency.get(a.id) ?? null;
+    return {
+      agencyId: a.id,
+      agencyName: a.name,
+      properties: tally(properties.data, a.id),
+      leads: tally(leads.data, a.id),
+      teamMembers: tally(profiles.data, a.id),
+      siteVisits: tally(visits.data, a.id),
+      media: tally(media.data, a.id),
+      conversations: tally(conversations.data, a.id),
+      whatsappMessages: (usage.data ?? [])
+        .filter(
+          (row) =>
+            row.agency_id === a.id &&
+            row.metric_key === "whatsapp_messages" &&
+            Date.parse(row.period_start) <= Date.now() &&
+            Date.parse(row.period_end) > Date.now(),
+        )
+        .reduce((total, row) => total + Number(row.count), 0),
+      aiRequests: (usage.data ?? [])
+        .filter(
+          (row) =>
+            row.agency_id === a.id &&
+            row.metric_key === "ai_requests" &&
+            Date.parse(row.period_start) <= Date.now() &&
+            Date.parse(row.period_end) > Date.now(),
+        )
+        .reduce((total, row) => total + Number(row.count), 0),
+      planName: plan?.name ?? null,
+      limits: (plan && limitsByPlan.get(plan.id)) || {
+        properties: null,
+        leads: null,
+        teamMembers: null,
+        whatsappMessages: null,
+        aiRequests: null,
+      },
+    };
+  });
+}
+
+export interface TeamMember {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  job_title: string | null;
+  status: Tables<"profiles">["status"];
+  role: Tables<"user_roles">["role"] | null;
+}
+
+export async function fetchTeamMembers(agencyId: string): Promise<TeamMember[]> {
+  const [{ data: profiles, error }, { data: roles, error: rolesError }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, job_title, status")
+      .eq("agency_id", agencyId)
+      .order("full_name"),
+    supabase.from("user_roles").select("user_id, role").eq("agency_id", agencyId),
+  ]);
+  if (error) throw error;
+  if (rolesError) throw rolesError;
+  const roleByUser = new Map((roles ?? []).map((r) => [r.user_id, r.role]));
+  return (profiles ?? []).map((p) => ({ ...p, role: roleByUser.get(p.id) ?? null }));
+}
+
+export async function fetchAssignableMembers(
+  agencyId: string,
+): Promise<{ id: string; full_name: string | null }[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("agency_id", agencyId)
+    .eq("status", "active")
+    .order("full_name");
+  if (error) throw error;
+  return data ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Employee
+// ---------------------------------------------------------------------------
+
+export interface EmployeeStats {
+  assignedProperties: number;
+  assignedLeads: number;
+  upcomingVisits: number;
+}
+
+export async function fetchEmployeeStats(userId: string): Promise<EmployeeStats> {
+  const [
+    { data: properties, error: pErr },
+    { data: leads, error: lErr },
+    { data: visits, error: vErr },
+  ] = await Promise.all([
+    supabase.from("properties").select("id").eq("assigned_to", userId),
+    supabase.from("leads").select("id").eq("assigned_to", userId),
+    supabase
+      .from("site_visits")
+      .select("id")
+      .eq("assigned_to", userId)
+      .in("status", ["requested", "confirmed"]),
+  ]);
+  if (pErr) throw pErr;
+  if (lErr) throw lErr;
+  if (vErr) throw vErr;
+  return {
+    assignedProperties: properties?.length ?? 0,
+    assignedLeads: leads?.length ?? 0,
+    upcomingVisits: visits?.length ?? 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Properties / leads / visits (shared by the agency and employee route trees;
+// RLS alone decides how many rows come back for a given signed-in user)
+// ---------------------------------------------------------------------------
+
+export type PropertyRow = Tables<"properties"> & {
+  assignee_name: string | null;
+  creator_name: string | null;
+};
+
+export async function fetchProperties(agencyId: string): Promise<PropertyRow[]> {
+  const { data, error } = await supabase
+    .from("properties")
+    .select("*")
+    .eq("agency_id", agencyId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = data ?? [];
+  const names = await idsToMap("profiles", "full_name", [
+    ...rows.map((r) => r.assigned_to),
+    ...rows.map((r) => r.created_by),
+  ]);
+  return rows.map((r) => ({
+    ...r,
+    assignee_name: r.assigned_to ? (names.get(r.assigned_to) ?? null) : null,
+    creator_name: r.created_by ? (names.get(r.created_by) ?? null) : null,
+  }));
+}
+
+export async function fetchProperty(id: string): Promise<PropertyRow | null> {
+  const { data, error } = await supabase.from("properties").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const names = await idsToMap("profiles", "full_name", [data.assigned_to, data.created_by]);
+  return {
+    ...data,
+    assignee_name: data.assigned_to ? (names.get(data.assigned_to) ?? null) : null,
+    creator_name: data.created_by ? (names.get(data.created_by) ?? null) : null,
+  };
+}
+
+export interface NewPropertyInput {
+  agencyId: string;
+  createdBy: string;
+  assignedTo?: string | undefined;
+  title: string;
+  propertyType: Tables<"properties">["property_type"];
+  purpose: Tables<"properties">["purpose"];
+  status: Tables<"properties">["status"];
+  pricePkr?: number | undefined;
+  rentPeriod?: Tables<"properties">["rent_period"] | undefined;
+  referenceCode?: string | undefined;
+  city?: string | undefined;
+  province?: string | undefined;
+  division?: string | undefined;
+  district?: string | undefined;
+  tehsil?: string | undefined;
+  locality?: string | undefined;
+  block?: string | undefined;
+  society?: string | undefined;
+  phaseBlock?: string | undefined;
+  areaValue?: number | undefined;
+  areaUnit?: Tables<"properties">["area_unit"] | undefined;
+  bedrooms?: number | undefined;
+  bathrooms?: number | undefined;
+  description?: string | undefined;
+  furnished?: boolean | undefined;
+  features?: string[] | undefined;
+  ownerName?: string | undefined;
+  ownerPhone?: string | undefined;
+  tenantName?: string | undefined;
+  tenantPhone?: string | undefined;
+  realtorName?: string | undefined;
+  realtorPhone?: string | undefined;
+}
+
+export async function createProperty(input: NewPropertyInput): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from("properties")
+    .insert({
+      agency_id: input.agencyId,
+      created_by: input.createdBy,
+      assigned_to: input.assignedTo ?? input.createdBy,
+      title: input.title,
+      property_type: input.propertyType,
+      purpose: input.purpose,
+      status: input.status,
+      price_pkr: input.pricePkr ?? null,
+      rent_period: input.rentPeriod ?? null,
+      reference_code: input.referenceCode ?? null,
+      city: input.city ?? null,
+      province: input.province ?? null,
+      division: input.division ?? null,
+      district: input.district ?? null,
+      tehsil: input.tehsil ?? null,
+      locality: input.locality ?? null,
+      block: input.block ?? null,
+      society: input.society ?? null,
+      phase_block: input.phaseBlock ?? null,
+      area_value: input.areaValue ?? null,
+      area_unit: input.areaUnit ?? null,
+      bedrooms: input.bedrooms ?? null,
+      bathrooms: input.bathrooms ?? null,
+      description: input.description ?? null,
+      furnished: input.furnished ?? false,
+      features: input.features ?? [],
+      owner_name: input.ownerName ?? null,
+      owner_phone: input.ownerPhone ?? null,
+      tenant_name: input.tenantName ?? null,
+      tenant_phone: input.tenantPhone ?? null,
+      realtor_name: input.realtorName ?? null,
+      realtor_phone: input.realtorPhone ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export type LeadRow = Tables<"leads"> & { assignee_name: string | null };
+
+/**
+ * Adds a timeline entry to a lead. The trigger derives agency_id from the
+ * lead, and RLS checks can_access_assigned_lead, so this only works for a
+ * lead the caller may see. A failure here must not fail the caller's save,
+ * so the error is surfaced as a console warning instead of thrown.
+ */
+export async function logLeadActivity(
+  leadId: string,
+  entry: {
+    type: "note" | "call" | "status_change" | "visit" | "assignment" | "system";
+    body?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const { error } = await supabase.from("lead_activities").insert({
+    lead_id: leadId,
+    type: entry.type,
+    body: entry.body ?? null,
+    metadata: (entry.metadata ?? {}) as never,
+  });
+  if (error) {
+    console.warn("[lead-activity] could not record an activity entry");
+  }
+}
+
+export async function fetchLeads(agencyId: string): Promise<LeadRow[]> {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("agency_id", agencyId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = data ?? [];
+  const names = await idsToMap(
+    "profiles",
+    "full_name",
+    rows.map((r) => r.assigned_to),
+  );
+  return rows.map((r) => ({
+    ...r,
+    assignee_name: r.assigned_to ? (names.get(r.assigned_to) ?? null) : null,
+  }));
+}
+
+export async function createLead(input: {
+  agency_id: string;
+  name?: string | null;
+  phone?: string | null;
+  whatsapp_number?: string | null;
+  requirement_text?: string | null;
+  budget_min_pkr?: number | null;
+  budget_max_pkr?: number | null;
+  preferred_city?: string | null;
+  preferred_locality?: string | null;
+  property_type?: Database["public"]["Enums"]["property_type"] | null;
+  purpose?: Database["public"]["Enums"]["property_purpose"] | null;
+  status?: Database["public"]["Enums"]["lead_status"];
+  assigned_to?: string | null;
+  notes?: string | null;
+}): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from("leads")
+    .insert(input as Database["public"]["Tables"]["leads"]["Insert"])
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateLead(id: string, patch: Partial<Tables<"leads">>): Promise<void> {
+  const { error } = await supabase
+    .from("leads")
+    .update(patch as Database["public"]["Tables"]["leads"]["Update"])
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteLead(id: string): Promise<void> {
+  const { error } = await supabase.from("leads").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function createVisit(input: {
+  agency_id: string;
+  lead_id?: string | null;
+  property_id?: string | null;
+  requested_at?: string | null;
+  scheduled_at?: string | null;
+  assigned_to?: string | null;
+  status?: Database["public"]["Enums"]["visit_status"];
+  notes?: string | null;
+  confirmed?: boolean;
+}): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from("site_visits")
+    .insert(input as Database["public"]["Tables"]["site_visits"]["Insert"])
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateVisit(
+  id: string,
+  patch: Partial<Tables<"site_visits">>,
+): Promise<void> {
+  const { error } = await supabase
+    .from("site_visits")
+    .update(patch as Database["public"]["Tables"]["site_visits"]["Update"])
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteVisit(id: string): Promise<void> {
+  const { error } = await supabase.from("site_visits").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Property check-in funnel (owner/tenant/realtor follow-ups) + media
+// ---------------------------------------------------------------------------
+
+export type CheckinRow = Tables<"property_checkins">;
+
+export async function fetchCheckins(propertyId: string): Promise<CheckinRow[]> {
+  const { data, error } = await supabase
+    .from("property_checkins")
+    .select("*")
+    .eq("property_id", propertyId)
+    .order("scheduled_for", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function recordCheckinResponse(
+  checkinId: string,
+  fields: {
+    responseText?: string | undefined;
+    propertyCondition?: string | undefined;
+    isVacant?: boolean | undefined;
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .from("property_checkins")
+    .update({
+      status: "responded",
+      response_text: fields.responseText ?? null,
+      property_condition: fields.propertyCondition ?? null,
+      is_vacant: fields.isVacant ?? null,
+    })
+    .eq("id", checkinId);
+  if (error) throw error;
+}
+
+export async function markCheckinSkipped(checkinId: string): Promise<void> {
+  const { error } = await supabase
+    .from("property_checkins")
+    .update({ status: "skipped" })
+    .eq("id", checkinId);
+  if (error) throw error;
+}
+
+export type MediaRow = Tables<"property_media">;
+
+export async function fetchPropertyMedia(propertyId: string): Promise<MediaRow[]> {
+  const { data, error } = await supabase
+    .from("property_media")
+    .select("*")
+    .eq("property_id", propertyId)
+    .order("sort_order", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Uploads to the private `property-media` bucket under agency_id/property_id/filename, then records the row. */
+export interface UploadPropertyMediaParams {
+  agencyId: string;
+  propertyId: string;
+  file: Blob;
+  fileName: string;
+  kind: Tables<"property_media">["kind"];
+  mimeType?: string;
+  sizeBytes?: number;
+  thumbnailBlob?: Blob | undefined;
+  posterBlob?: Blob | undefined;
+  caption?: string;
+  isCover?: boolean;
+}
+
+export async function uploadPropertyMedia(
+  params: UploadPropertyMediaParams,
+): Promise<{ id: string }> {
+  const safeName = params.fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-60);
+  const base = `${params.agencyId}/${params.propertyId}/${Date.now()}-${safeName}`;
+  const { error: uploadError } = await supabase.storage
+    .from("property-media")
+    .upload(base, params.file);
+  if (uploadError) throw uploadError;
+
+  let thumbnailPath: string | undefined;
+  if (params.thumbnailBlob && params.kind === "photo") {
+    try {
+      const t = `${base}.thumb.jpg`;
+      const { error } = await supabase.storage
+        .from("property-media")
+        .upload(t, params.thumbnailBlob);
+      if (!error) thumbnailPath = t;
+    } catch {
+      // A missing thumbnail is not fatal; the full image is the fallback.
+    }
+  }
+
+  let posterPath: string | undefined;
+  if (params.posterBlob && params.kind === "video") {
+    try {
+      const p = `${base}.poster.jpg`;
+      const { error } = await supabase.storage.from("property-media").upload(p, params.posterBlob);
+      if (!error) posterPath = p;
+    } catch {
+      // Same for the poster.
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("property_media")
+    .insert({
+      agency_id: params.agencyId,
+      property_id: params.propertyId,
+      kind: params.kind,
+      storage_path: base,
+      caption: params.caption ?? null,
+      thumbnail_path: thumbnailPath ?? null,
+      poster_path: posterPath ?? null,
+      mime_type: params.mimeType ?? null,
+      size_bytes: params.sizeBytes ?? params.file.size,
+      is_cover: params.isCover ?? false,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchMediaUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from("property-media")
+    .createSignedUrl(storagePath, 3600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function deletePropertyMedia(media: MediaRow): Promise<void> {
+  const paths = [media.storage_path];
+  if (media.thumbnail_path) paths.push(media.thumbnail_path);
+  if (media.poster_path) paths.push(media.poster_path);
+  const { error: storageError } = await supabase.storage.from("property-media").remove(paths);
+  if (storageError) throw storageError;
+  const { error } = await supabase.from("property_media").delete().eq("id", media.id);
+  if (error) throw error;
+}
+
+export async function setCoverMedia(propertyId: string, mediaId: string | null): Promise<void> {
+  await supabase
+    .from("property_media")
+    .update({ is_cover: false })
+    .eq("property_id", propertyId)
+    .eq("kind", "photo");
+  if (mediaId) {
+    await supabase.from("property_media").update({ is_cover: true }).eq("id", mediaId);
+  }
+}
+
+export async function updateMediaCaption(id: string, caption: string | null): Promise<void> {
+  const { error } = await supabase.from("property_media").update({ caption }).eq("id", id);
+  if (error) throw error;
+}
+
+/** Persist a new left-to-right photo order (array of row ids in order). */
+export async function reorderMedia(orderedIds: string[]): Promise<void> {
+  // row-level update is small; data volumes are per-property media lists.
+  for (const [i, id] of orderedIds.entries()) {
+    const { error } = await supabase.from("property_media").update({ sort_order: i }).eq("id", id);
+    if (error) throw error;
+  }
+}
+
+/** Cover thumbnails for the list view, avoiding a full gallery fetch. */
+export async function fetchCoverMedia(propertyIds: string[]): Promise<Map<string, MediaRow>> {
+  if (propertyIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("property_media")
+    .select("*")
+    .in("property_id", propertyIds)
+    .eq("is_cover", true)
+    .eq("kind", "photo");
+  if (error) throw error;
+  const out = new Map<string, MediaRow>();
+  for (const row of data ?? []) out.set(row.property_id, row);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Locations (normalized Pakistan hierarchy, read-only reference data)
+// ---------------------------------------------------------------------------
+
+export type LocationKind =
+  | "country"
+  | "province"
+  | "division"
+  | "district"
+  | "city"
+  | "tehsil"
+  | "locality"
+  | "society"
+  | "phase"
+  | "block";
+
+export interface LocationOption {
+  id: string;
+  name: string;
+  kind: LocationKind;
+  parent_id: string | null;
+  sort_order: number;
+}
+
+export async function fetchLocationsByKind(
+  kind: LocationKind,
+  parentIds: string[] | null,
+): Promise<LocationOption[]> {
+  let q = supabase
+    .from("locations")
+    .select("id, name, kind, parent_id, sort_order")
+    .eq("kind", kind)
+    .order("name");
+  if (parentIds && parentIds.length > 0) q = q.in("parent_id", parentIds);
+  if (parentIds === null) q = q.is("parent_id", null);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as LocationOption[];
+}
+
+export async function fetchLocationChildren(
+  kind: LocationKind,
+  parentId: string,
+): Promise<LocationOption[]> {
+  return fetchLocationsByKind(kind, [parentId]);
+}
+
+// ---------------------------------------------------------------------------
+// Server-side property search + pagination (never loads the whole table)
+// ---------------------------------------------------------------------------
+
+export interface PropertyPageParams {
+  agencyId: string;
+  q?: string | undefined; // title / reference_code ilike
+  status?: string[] | undefined;
+  propertyType?: string[] | undefined;
+  purpose?: string[] | undefined;
+  province?: string | undefined;
+  district?: string | undefined;
+  city?: string | undefined;
+  locality?: string | undefined;
+  society?: string | undefined;
+  assignedTo?: string | undefined;
+  priceMin?: number | undefined;
+  priceMax?: number | undefined;
+  areaMin?: number | undefined;
+  areaMax?: number | undefined;
+  bedroomsMin?: number | undefined;
+  bathroomsMin?: number | undefined;
+  page: number;
+  pageSize: number;
+  orderBy?: "created_at" | "price_pkr" | "area_value" | "title" | undefined;
+  ascending?: boolean | undefined;
+}
+
+export interface PropertyPage {
+  rows: PropertyRow[];
+  total: number;
+}
+
+export async function fetchPropertiesPaged(params: PropertyPageParams): Promise<PropertyPage> {
+  let q = supabase
+    .from("properties")
+    .select("*", { count: "exact" })
+    .eq("agency_id", params.agencyId);
+
+  if (params.q && params.q.trim()) {
+    const needle = `%${params.q.trim().replaceAll("%", "\\%")}%`;
+    q = q.or(
+      `title.ilike.${needle},reference_code.ilike.${needle},city.ilike.${needle},society.ilike.${needle},district.ilike.${needle}` as string,
+    );
+  }
+  if (params.status?.length) q = q.in("status", params.status as never);
+  if (params.propertyType?.length) q = q.in("property_type", params.propertyType as never);
+  if (params.purpose?.length) q = q.in("purpose", params.purpose as never);
+  if (params.province) q = q.eq("province", params.province);
+  if (params.district) q = q.eq("district", params.district);
+  if (params.city) q = q.eq("city", params.city);
+  if (params.locality) q = q.ilike("locality", `%${params.locality}%`);
+  if (params.society) q = q.ilike("society", `%${params.society}%`);
+  if (params.assignedTo) q = q.eq("assigned_to", params.assignedTo);
+  if (params.priceMin !== undefined) q = q.gte("price_pkr", params.priceMin);
+  if (params.priceMax !== undefined) q = q.lte("price_pkr", params.priceMax);
+  if (params.areaMin !== undefined) q = q.gte("area_value", params.areaMin);
+  if (params.areaMax !== undefined) q = q.lte("area_value", params.areaMax);
+  if (params.bedroomsMin !== undefined) q = q.gte("bedrooms", params.bedroomsMin);
+  if (params.bathroomsMin !== undefined) q = q.gte("bathrooms", params.bathroomsMin);
+
+  const orderBy = params.orderBy ?? "created_at";
+  q = q.order(orderBy, { ascending: params.ascending ?? false, nullsFirst: false });
+
+  const from = (params.page - 1) * params.pageSize;
+  q = q.range(from, from + params.pageSize - 1);
+
+  const { data, count, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []) as PropertyRow[];
+  const names = await idsToMap(
+    "profiles",
+    "full_name",
+    rows.map((r) => r.assigned_to),
+  );
+  const enriched = rows.map((r) => ({
+    ...r,
+    creator_name: null,
+    assignee_name: r.assigned_to ? (names.get(r.assigned_to) ?? null) : null,
+  }));
+  return { rows: enriched, total: count ?? 0 };
+}
+
+export async function updateProperty(
+  id: string,
+  patch: Partial<Omit<Tables<"properties">, "id" | "agency_id">>,
+): Promise<void> {
+  const { error } = await supabase.from("properties").update(patch).eq("id", id);
+  if (error) throw error;
+}
+
+export async function setPropertyStatus(
+  id: string,
+  status: Tables<"properties">["status"],
+): Promise<void> {
+  const { error } = await supabase.from("properties").update({ status }).eq("id", id);
+  if (error) throw error;
+}
+
+export type VisitRow = Tables<"site_visits"> & {
+  assignee_name: string | null;
+  property_title: string | null;
+  lead_name: string | null;
+};
+
+export async function fetchVisits(agencyId: string): Promise<VisitRow[]> {
+  const { data, error } = await supabase
+    .from("site_visits")
+    .select("*")
+    .eq("agency_id", agencyId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = data ?? [];
+  const [names, properties, leads] = await Promise.all([
+    idsToMap(
+      "profiles",
+      "full_name",
+      rows.map((r) => r.assigned_to),
+    ),
+    idsToMap(
+      "properties",
+      "title",
+      rows.map((r) => r.property_id),
+    ),
+    idsToMap(
+      "leads",
+      "name",
+      rows.map((r) => r.lead_id),
+    ),
+  ]);
+  return rows.map((r) => ({
+    ...r,
+    assignee_name: r.assigned_to ? (names.get(r.assigned_to) ?? null) : null,
+    property_title: r.property_id ? (properties.get(r.property_id) ?? null) : null,
+    lead_name: r.lead_id ? (leads.get(r.lead_id) ?? null) : null,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Reports
+//
+// One snapshot built entirely from RLS-scoped reads. The same call answers
+// "the whole agency" for an agency_admin and "just me" for an employee:
+// can_access_assigned_record (0001) does that narrowing, not a filter here and
+// not an id handed in by the page. Nothing below re-derives access -- it only
+// counts what Postgres already agreed to return.
+// ---------------------------------------------------------------------------
+
+export interface ReportCount {
+  key: string;
+  count: number;
+}
+
+export interface ReportWeek {
+  /** Local YYYY-MM-DD of that week's Monday. */
+  weekStart: string;
+  count: number;
+}
+
+export interface ReportWorkloadRow {
+  /** null is the "nobody assigned" bucket, which only an admin can see. */
+  id: string | null;
+  name: string;
+  leads: number;
+  properties: number;
+  visits: number;
+}
+
+export interface ReportSnapshot {
+  leads: {
+    total: number;
+    byStatus: ReportCount[];
+    won: number;
+    lost: number;
+    open: number;
+    /** won / (won + lost). null when no lead has reached either yet, so the
+     *  UI can say "not enough data" instead of printing 0% or NaN. */
+    conversion: number | null;
+  };
+  properties: {
+    total: number;
+    byStatus: ReportCount[];
+    byType: ReportCount[];
+  };
+  visits: {
+    total: number;
+    /** Oldest first, one entry per week, zero-filled for quiet weeks. */
+    weeks: ReportWeek[];
+    /** Visible visits outside the chart window. total === sum(weeks) + this,
+     *  so the chart can never silently disagree with the headline number. */
+    notInWindow: number;
+  };
+  workload: {
+    /** True when every active member is listed; false when it is the caller
+     *  alone. An employee cannot see a colleague's rows, so echoing them as
+     *  zeros would assert something we cannot know. */
+    complete: boolean;
+    rows: ReportWorkloadRow[];
+  };
+}
+
+// Exhaustive by construction: a Record keyed by the DB enum stops compiling the
+// moment a migration adds a status, so a stage can never be silently dropped
+// from a "complete" list or rendered as a misleading zero.
+const LEAD_STATUS_ORDER: Record<Tables<"leads">["status"], number> = {
+  new: 0,
+  contacted: 1,
+  qualified: 2,
+  visit_scheduled: 3,
+  negotiating: 4,
+  won: 5,
+  lost: 6,
+};
+
+const PROPERTY_STATUS_ORDER: Record<Tables<"properties">["status"], number> = {
+  available: 0,
+  reserved: 1,
+  sold: 2,
+  rented: 3,
+  inactive: 4,
+  draft: 5,
+  unavailable: 6,
+  expired: 7,
+};
+
+const PROPERTY_TYPE_ORDER: Record<Tables<"properties">["property_type"], number> = {
+  house: 0,
+  apartment: 1,
+  plot: 2,
+  commercial: 3,
+  office: 4,
+  shop: 5,
+  warehouse: 6,
+  agricultural: 7,
+};
+
+const REPORT_WEEKS = 8;
+
+function countEnumValues<T extends string>(
+  order: Record<T, number>,
+  values: (string | null)[],
+): ReportCount[] {
+  const counts = new Map<string, number>();
+  for (const v of values) {
+    if (v === null) continue;
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  const known = (Object.keys(order) as string[]).sort((a, b) => order[a as T] - order[b as T]);
+  // Anything the enum in types.ts does not list still gets counted, last, so
+  // the rows always add up to the total even if that file is stale.
+  const unknown = [...counts.keys()].filter((k) => !(k in order)).sort();
+  return [...known, ...unknown].map((key) => ({ key, count: counts.get(key) ?? 0 }));
+}
+
+function localDateKey(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** Midnight local time on the Monday of the week containing `d`. */
+function mondayOf(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+/**
+ * Counts for the reports page.
+ *
+ * `scope` only shapes how the workload table is grouped; it is NOT an access
+ * control. RLS has already decided which rows come back, so a wrong scope can
+ * mislabel a table but cannot reveal another tenant's or another employee's
+ * records.
+ */
+export async function fetchReportSnapshot(
+  agencyId: string,
+  scope: { kind: "agency" } | { kind: "self"; userId: string },
+): Promise<ReportSnapshot> {
+  const [
+    { data: leadRows, error: lErr },
+    { data: propertyRows, error: pErr },
+    { data: visitRows, error: vErr },
+    { data: members, error: mErr },
+  ] = await Promise.all([
+    supabase.from("leads").select("status, assigned_to").eq("agency_id", agencyId),
+    supabase
+      .from("properties")
+      .select("status, property_type, assigned_to")
+      .eq("agency_id", agencyId),
+    supabase.from("site_visits").select("created_at, assigned_to").eq("agency_id", agencyId),
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("agency_id", agencyId)
+      .eq("status", "active")
+      .order("full_name"),
+  ]);
+  if (lErr) throw lErr;
+  if (pErr) throw pErr;
+  if (vErr) throw vErr;
+  if (mErr) throw mErr;
+
+  const leads = leadRows ?? [];
+  const properties = propertyRows ?? [];
+  const visits = visitRows ?? [];
+
+  // --- leads ---
+  const byStatus = countEnumValues(
+    LEAD_STATUS_ORDER,
+    leads.map((r) => r.status),
+  );
+  const won = leads.filter((r) => r.status === "won").length;
+  const lost = leads.filter((r) => r.status === "lost").length;
+
+  // --- properties ---
+  const propertiesByStatus = countEnumValues(
+    PROPERTY_STATUS_ORDER,
+    properties.map((r) => r.status),
+  );
+  const propertiesByType = countEnumValues(
+    PROPERTY_TYPE_ORDER,
+    properties.map((r) => r.property_type),
+  );
+
+  // --- visits per week ---
+  const thisMonday = mondayOf(new Date());
+  const windowStart = new Date(thisMonday);
+  windowStart.setDate(windowStart.getDate() - 7 * (REPORT_WEEKS - 1));
+  const perWeek = new Map<string, number>();
+  for (let i = 0; i < REPORT_WEEKS; i++) {
+    const d = new Date(windowStart);
+    d.setDate(d.getDate() + i * 7);
+    perWeek.set(localDateKey(d), 0);
+  }
+  let notInWindow = 0;
+  for (const v of visits) {
+    const key = localDateKey(mondayOf(new Date(v.created_at)));
+    if (perWeek.has(key)) perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
+    else notInWindow += 1;
+  }
+  const weeks: ReportWeek[] = [...perWeek.entries()].map(([weekStart, count]) => ({
+    weekStart,
+    count,
+  }));
+
+  // --- workload ---
+  const wholeTeam = scope.kind === "agency";
+  const nameById = new Map<string, string>();
+  if (wholeTeam) {
+    for (const m of members ?? []) nameById.set(m.id, m.full_name ?? "Unnamed member");
+    // Assignees the active-member list does not cover (someone deactivated
+    // while still owning records) are looked up, so they show up under their
+    // own name rather than being folded into "Unassigned".
+    const missing = [
+      ...new Set(
+        [...leads, ...properties, ...visits]
+          .map((r) => r.assigned_to)
+          .filter((id): id is string => id !== null && !nameById.has(id)),
+      ),
+    ];
+    if (missing.length > 0) {
+      for (const [id, name] of await idsToMap("profiles", "full_name", missing)) {
+        nameById.set(id, name);
+      }
+    }
+  } else {
+    nameById.set(scope.userId, "You");
+  }
+
+  const buckets = new Map<string | null, ReportWorkloadRow>();
+  const seed = (id: string | null): ReportWorkloadRow => {
+    const existing = buckets.get(id);
+    if (existing) return existing;
+    const created: ReportWorkloadRow = {
+      id,
+      name: id === null ? "Unassigned" : (nameById.get(id) ?? "Unknown member"),
+      leads: 0,
+      properties: 0,
+      visits: 0,
+    };
+    buckets.set(id, created);
+    return created;
+  };
+
+  if (wholeTeam) for (const m of members ?? []) seed(m.id);
+  else seed(scope.userId);
+
+  // Seeding the whole team is what lets an admin see a colleague with nothing
+  // assigned; in self scope every other assignee is dropped, which is exactly
+  // the rows RLS never returned in the first place.
+  const bucketFor = (id: string | null): ReportWorkloadRow | null =>
+    wholeTeam || id === scope.userId ? seed(id) : null;
+
+  for (const r of leads) {
+    const row = bucketFor(r.assigned_to);
+    if (row) row.leads += 1;
+  }
+  for (const r of properties) {
+    const row = bucketFor(r.assigned_to);
+    if (row) row.properties += 1;
+  }
+  for (const r of visits) {
+    const row = bucketFor(r.assigned_to);
+    if (row) row.visits += 1;
+  }
+
+  const rows = [...buckets.values()].sort((a, b) => {
+    // "Unassigned" is a backlog, not a person: always last.
+    if (a.id === null) return 1;
+    if (b.id === null) return -1;
+    const ta = a.leads + a.properties + a.visits;
+    const tb = b.leads + b.properties + b.visits;
+    if (tb !== ta) return tb - ta;
+    return a.name.localeCompare(b.name);
+  });
+
+  return {
+    leads: {
+      total: leads.length,
+      byStatus,
+      won,
+      lost,
+      open: leads.length - won - lost,
+      conversion: won + lost === 0 ? null : won / (won + lost),
+    },
+    properties: {
+      total: properties.length,
+      byStatus: propertiesByStatus,
+      byType: propertiesByType,
+    },
+    visits: {
+      total: visits.length,
+      weeks,
+      notInWindow,
+    },
+    workload: {
+      complete: wholeTeam,
+      rows,
+    },
+  };
+}

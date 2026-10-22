@@ -54,6 +54,10 @@ export default defineConfig(async ({ command }) => {
     plugins.push(
       nitro({
         preset: nitroPreset,
+        // Workers Builds runs `wrangler preview` for this non-production
+        // branch. Wrangler requires an explicit previews config on the
+        // generated Nitro Worker config before it can create a Preview.
+        cloudflare: { wrangler: { previews: {} } },
         // Pin the Worker compatibility date to a date Cloudflare already
         // supports. Nitro's default "latest" can resolve to tomorrow in UTC
         // and make the generated Worker impossible to preview/deploy today.

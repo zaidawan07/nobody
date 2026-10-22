@@ -1,0 +1,859 @@
+import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  ArrowLeft,
+  Home,
+  Loader2,
+  AlertCircle,
+  Phone,
+  MessageCircle,
+  Image as ImageIcon,
+  Video,
+  Trash2,
+  Upload,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/layout/AppShell";
+import { EmptyState, StatusBadge } from "@/components/shared/ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  fetchProperty,
+  fetchCheckins,
+  recordCheckinResponse,
+  markCheckinSkipped,
+  type CheckinRow,
+  type PropertyRow,
+} from "@/lib/queries";
+import { schedulePropertyCheckin, markCheckinPrepared } from "@/lib/checkins.functions";
+import { buildCheckinMessage } from "@/lib/checkin-message";
+import { buildWhatsAppDraftUrl } from "@/lib/phone";
+import { setPropertyStatusSafe, reopenProperty } from "@/lib/property-status.functions";
+import { isTerminalStatus, transitionError } from "@/lib/property-availability";
+import { PropertyMediaManager } from "@/components/property/PropertyMediaManager";
+import { EditPropertyDialog } from "@/components/property/EditPropertyDialog";
+import { formatPkr, formatArea, titleCase } from "@/lib/format";
+
+export const Route = createFileRoute("/_authenticated/agency/properties/$propertyId")({
+  head: () => ({ meta: [{ title: "Property — EstateOS" }] }),
+  component: PropertyDetailPage,
+});
+
+function PropertyDetailPage() {
+  const { propertyId } = Route.useParams();
+  const { access } = Route.useRouteContext();
+
+  const { data: property, isLoading } = useQuery({
+    queryKey: ["property", propertyId],
+    queryFn: () => fetchProperty(propertyId),
+  });
+  const [editing, setEditing] = useState(false);
+
+  if (isLoading) {
+    return (
+      <AppShell title="Property">
+        <Skeleton className="h-64 rounded-xl" />
+      </AppShell>
+    );
+  }
+
+  if (!property) {
+    return (
+      <AppShell title="Property not found">
+        <EmptyState
+          icon={Home}
+          title="Property not found"
+          description="It may not exist, or it isn't assigned to you."
+          action={
+            <Button asChild variant="secondary" className="mt-2">
+              <Link to="/agency/properties">
+                <ArrowLeft className="size-4" /> Back to properties
+              </Link>
+            </Button>
+          }
+        />
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell
+      title={property.title}
+      description={[property.city, titleCase(property.purpose)].filter(Boolean).join(" · ")}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/agency/properties">
+              <ArrowLeft className="size-4" /> Back
+            </Link>
+          </Button>
+          <Button size="sm" onClick={() => setEditing(true)}>
+            Edit property
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <InfoCard label="Status" value={<StatusBadge status={property.status} />} />
+        <InfoCard
+          label="Price"
+          value={formatPkr(property.price_pkr ? Number(property.price_pkr) : null)}
+        />
+        <InfoCard label="Area" value={formatArea(property.area_value, property.area_unit)} />
+        <InfoCard label="Assigned to" value={property.assignee_name ?? "Unassigned"} />
+      </div>
+
+      <div className="mt-3">
+        <ChangeStatus property={property} agencyId={access.agencyId!} />
+      </div>
+
+      {editing ? <EditPropertyDialog property={property} onDone={() => setEditing(false)} /> : null}
+
+      <div className="surface-panel mt-4 p-5">
+        <p className="font-medium">Details</p>
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+          <DetailRow label="Type" value={titleCase(property.property_type)} />
+          <DetailRow label="Purpose" value={titleCase(property.purpose)} />
+          <DetailRow
+            label="Availability"
+            value={property.status === "available" ? "Available" : titleCase(property.status)}
+          />
+          <DetailRow
+            label="Location"
+            value={
+              [property.city, property.society, property.locality].filter(Boolean).join(" · ") ||
+              "—"
+            }
+          />
+          <DetailRow
+            label="Phase / Block"
+            value={[property.phase_block, property.block].filter(Boolean).join(" · ") || "—"}
+          />
+          <DetailRow
+            label="District / Division"
+            value={[property.district, property.division].filter(Boolean).join(" · ") || "—"}
+          />
+          <DetailRow
+            label="Beds"
+            value={property.bedrooms != null ? String(property.bedrooms) : "—"}
+          />
+          <DetailRow
+            label="Baths"
+            value={property.bathrooms != null ? String(property.bathrooms) : "—"}
+          />
+          <DetailRow label="Furnished" value={property.furnished ? "Yes" : "No"} />
+          <DetailRow label="Area" value={formatArea(property.area_value, property.area_unit)} />
+          <DetailRow label="Reference" value={property.reference_code ?? "—"} />
+          <DetailRow label="Address" value={property.address ?? "—"} />
+          <DetailRow
+            label="Rent period"
+            value={property.rent_period ? hyphenatePeriod(property.rent_period) : "—"}
+          />
+          <DetailRow
+            label="Owner contact"
+            value={
+              property.owner_phone
+                ? `${property.owner_name ?? ""} ${property.owner_phone}`.trim()
+                : "—"
+            }
+          />
+          <DetailRow
+            label="Tenant contact"
+            value={
+              property.tenant_phone
+                ? `${property.tenant_name ?? ""} ${property.tenant_phone}`.trim()
+                : "—"
+            }
+          />
+          <DetailRow
+            label="Realtor contact"
+            value={
+              property.realtor_phone
+                ? `${property.realtor_name ?? ""} ${property.realtor_phone}`.trim()
+                : "—"
+            }
+          />
+        </dl>
+        {property.features && property.features.length ? (
+          <div className="mt-3">
+            <p className="text-xs text-muted-foreground">Features</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {property.features.map((f) => (
+                <span key={f} className="rounded-full bg-secondary px-2 py-1 text-xs">
+                  {f}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {property.description ? (
+          <div className="mt-3">
+            <p className="text-xs text-muted-foreground">Description</p>
+            <p className="mt-1 text-sm">{property.description}</p>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <ContactsCard property={property} />
+        <PropertyMediaManager propertyId={property.id} agencyId={access.agencyId!} />
+      </div>
+
+      <div className="mt-6">
+        <CheckinsCard
+          propertyId={propertyId}
+          propertyTitle={property.title}
+          agencyName={access.agencyName ?? "EstateOS"}
+        />
+      </div>
+    </AppShell>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function hyphenatePeriod(p: NonNullable<PropertyRow["rent_period"]>): string {
+  return p; // already short like 'monthly'
+}
+
+function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="surface-panel p-5">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <div className="mt-1 text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function ChangeStatus({ property, agencyId }: { property: PropertyRow; agencyId: string }) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState<PropertyRow["status"]>(property.status);
+  const setStatus = useServerFn(setPropertyStatusSafe);
+  const reopen = useServerFn(reopenProperty);
+  const [reopenId, setReopenId] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [reopenError, setReopenError] = useState<string | null>(null);
+  const [reopening, setReopening] = useState(false);
+
+  async function apply(status: PropertyRow["status"]) {
+    // The same rule the database enforces, checked first so the user gets a
+    // sentence instead of a permission error. The server re-checks against the
+    // row it reads, so a stale picker can still lose the race correctly.
+    const problem = transitionError(value ?? "draft", status);
+    if (problem) {
+      toast.error(problem);
+      return;
+    }
+    try {
+      const result = await setStatus({ data: { id: property.id, status } });
+      if (!result.ok) {
+        toast.error(result.error ?? "That status change isn't allowed.");
+        return;
+      }
+      setValue(result.status as PropertyRow["status"]);
+      toast.success(`Status changed to ${result.status}`);
+      await queryClient.invalidateQueries({ queryKey: ["property", property.id] });
+      await queryClient.invalidateQueries({ queryKey: ["properties", agencyId] });
+      await queryClient.invalidateQueries({ queryKey: ["properties-paged"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't update status");
+    }
+  }
+
+  async function onReopen() {
+    setReopening(true);
+    setReopenError(null);
+    try {
+      await reopen({ data: { id: property.id, reason } });
+      setValue("available");
+      setReopenId(null);
+      setReason("");
+      toast.success("Property reopened and recorded");
+      await queryClient.invalidateQueries({ queryKey: ["property", property.id] });
+      await queryClient.invalidateQueries({ queryKey: ["properties", agencyId] });
+      await queryClient.invalidateQueries({ queryKey: ["properties-paged"] });
+    } catch (e) {
+      setReopenError(e instanceof Error ? e.message : "Couldn't reopen the property.");
+    } finally {
+      setReopening(false);
+    }
+  }
+
+  const closed = isTerminalStatus(value ?? "");
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground">Change status:</span>
+        <Select
+          value={value ?? "available"}
+          onValueChange={(v) => apply(v as PropertyRow["status"])}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="available">Available</SelectItem>
+            <SelectItem value="reserved">Reserved</SelectItem>
+            <SelectItem value="sold">Sold</SelectItem>
+            <SelectItem value="rented">Rented</SelectItem>
+            <SelectItem value="unavailable">Unavailable</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {closed ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <p>
+            A {value} property can't go back to available or reserved from the list above. If that
+            was recorded in error, reopen it — reopening is written to the audit log.
+          </p>
+          {reopenId === property.id ? (
+            <div className="mt-2 space-y-2">
+              <Input
+                placeholder="Reason (at least 5 characters)"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              {reopenError ? <p className="text-destructive">{reopenError}</p> : null}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={onReopen}
+                  disabled={reopening || reason.trim().length < 5}
+                >
+                  {reopening ? <Loader2 className="size-4 animate-spin" /> : "Reopen"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setReopenId(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => setReopenId(property.id)}
+            >
+              Reopen property
+            </Button>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Contacts: owner / tenant / realtor, each with a "Schedule check-in" action
+// ---------------------------------------------------------------------------
+
+function ContactsCard({
+  property,
+}: {
+  property: {
+    id: string;
+    assigned_to: string | null;
+    owner_name: string | null;
+    owner_phone: string | null;
+    tenant_name: string | null;
+    tenant_phone: string | null;
+    realtor_name: string | null;
+    realtor_phone: string | null;
+  };
+}) {
+  const contacts = [
+    {
+      type: "owner" as const,
+      label: "Owner",
+      name: property.owner_name,
+      phone: property.owner_phone,
+    },
+    {
+      type: "tenant" as const,
+      label: "Tenant",
+      name: property.tenant_name,
+      phone: property.tenant_phone,
+    },
+    {
+      type: "realtor" as const,
+      label: "Realtor",
+      name: property.realtor_name,
+      phone: property.realtor_phone,
+    },
+  ];
+  const hasAny = contacts.some((c) => c.phone);
+
+  return (
+    <div className="surface-panel p-5">
+      <p className="font-medium">Contacts</p>
+      {!hasAny ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No owner, tenant, or realtor phone numbers on file yet. Add them from Edit property.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {contacts
+            .filter((c) => c.phone)
+            .map((c) => (
+              <div
+                key={c.type}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">
+                    {c.label}
+                    {c.name ? (
+                      <span className="font-normal text-muted-foreground"> · {c.name}</span>
+                    ) : null}
+                  </p>
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Phone className="size-3" /> {c.phone}
+                  </p>
+                </div>
+                <ScheduleCheckinDialog
+                  propertyId={property.id}
+                  contactType={c.type}
+                  contactName={c.name}
+                  contactPhone={c.phone!}
+                />
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const scheduleSchema = z.object({
+  channel: z.enum(["whatsapp", "sms"]),
+  scheduledFor: z.string().min(1, "Pick a date"),
+  consentConfirmed: z.boolean().refine(Boolean, "Confirm the contact gave permission first."),
+});
+
+function ScheduleCheckinDialog({
+  propertyId,
+  contactType,
+  contactName,
+  contactPhone,
+}: {
+  propertyId: string;
+  contactType: "owner" | "tenant" | "realtor";
+  contactName: string | null;
+  contactPhone: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const scheduleCheckin = useServerFn(schedulePropertyCheckin);
+
+  const form = useForm<z.infer<typeof scheduleSchema>>({
+    resolver: zodResolver(scheduleSchema),
+    defaultValues: { channel: "whatsapp", scheduledFor: "", consentConfirmed: false },
+  });
+
+  async function onSubmit(values: z.infer<typeof scheduleSchema>) {
+    setFormError(null);
+    try {
+      await scheduleCheckin({
+        data: {
+          propertyId,
+          contactType,
+          contactPhone,
+          channel: values.channel,
+          scheduledFor: new Date(values.scheduledFor).toISOString(),
+          consentConfirmed: values.consentConfirmed,
+        },
+      });
+      toast.success("Check-in scheduled");
+      setOpen(false);
+      form.reset();
+      queryClient.invalidateQueries({ queryKey: ["checkins", propertyId] });
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't schedule that check-in.");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="secondary">
+          <MessageCircle className="size-4" /> Schedule check-in
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Schedule a check-in</DialogTitle>
+          <DialogDescription>
+            This records a follow-up for {contactName || "this contact"} ({contactPhone}). WhatsApp
+            opens as a draft for you to review and send. Scheduled SMS only sends after live
+            messaging is enabled.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {formError ? (
+              <Alert variant="destructive">
+                <AlertCircle className="size-4" />
+                <AlertDescription>{formError}</AlertDescription>
+              </Alert>
+            ) : null}
+            <FormField
+              control={form.control}
+              name="channel"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Channel</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                      <SelectItem value="sms">SMS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="scheduledFor"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Send on</FormLabel>
+                  <FormControl>
+                    <Input type="datetime-local" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="consentConfirmed"
+              render={({ field }) => (
+                <FormItem className="flex items-start gap-3 rounded-lg border border-border p-3">
+                  <FormControl>
+                    <input
+                      type="checkbox"
+                      checked={field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="mt-1 size-4 accent-primary"
+                      aria-label="Confirm contact permission"
+                    />
+                  </FormControl>
+                  <div className="space-y-1">
+                    <FormLabel>Permission recorded</FormLabel>
+                    <p className="text-xs text-muted-foreground">
+                      I confirm this contact agreed to receive property follow-ups from this agency.
+                      EstateOS records my confirmation and user account.
+                    </p>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              )}
+            />
+            <DialogFooter>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Schedule"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Check-ins history
+// ---------------------------------------------------------------------------
+
+function CheckinsCard({
+  propertyId,
+  propertyTitle,
+  agencyName,
+}: {
+  propertyId: string;
+  propertyTitle: string;
+  agencyName: string;
+}) {
+  const queryClient = useQueryClient();
+  const prepareCheckin = useServerFn(markCheckinPrepared);
+  const { data, isLoading } = useQuery({
+    queryKey: ["checkins", propertyId],
+    queryFn: () => fetchCheckins(propertyId),
+  });
+  const { data: property } = useQuery({
+    queryKey: ["property", propertyId],
+    queryFn: () => fetchProperty(propertyId),
+  });
+  const assignedName = property?.assigned_to
+    ? (property.assignee_name ?? property.assigned_to)
+    : null;
+  const [respondingTo, setRespondingTo] = useState<CheckinRow | null>(null);
+
+  async function skip(id: string) {
+    try {
+      await markCheckinSkipped(id);
+      queryClient.invalidateQueries({ queryKey: ["checkins", propertyId] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't update that check-in.");
+    }
+  }
+
+  return (
+    <div className="surface-panel p-5">
+      <p className="font-medium">Check-in history</p>
+      {assignedName ? (
+        <p className="mt-1 text-xs text-muted-foreground">Assigned to: {assignedName}</p>
+      ) : null}
+      {isLoading ? (
+        <Skeleton className="mt-3 h-24 rounded-lg" />
+      ) : !data || data.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No check-ins scheduled yet. Use "Schedule check-in" on a contact above.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {data.map((c) => {
+            const draftUrl =
+              c.status === "scheduled" &&
+              !c.prepared_at &&
+              c.channel === "whatsapp" &&
+              c.consent_at &&
+              new Date(c.scheduled_for).getTime() <= Date.now()
+                ? buildWhatsAppDraftUrl(
+                    c.contact_phone,
+                    buildCheckinMessage({
+                      propertyTitle,
+                      contactType: c.contact_type,
+                      agencyName,
+                    }),
+                  )
+                : null;
+            return (
+              <div
+                key={c.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm"
+              >
+                <div>
+                  <p className="font-medium">
+                    {titleCase(c.contact_type)} · {titleCase(c.channel)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(c.scheduled_for).toLocaleString()}
+                    {c.response_text ? ` — "${c.response_text}"` : ""}
+                    {c.is_vacant ? " — reported vacant" : ""}
+                  </p>
+                  {c.prepared_at ? (
+                    <p className="text-xs text-muted-foreground">
+                      WhatsApp draft opened; this does not confirm it was sent.
+                    </p>
+                  ) : null}
+                  {c.provider_error ? (
+                    <p className="text-xs text-destructive">{c.provider_error}</p>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={c.prepared_at ? "prepared" : c.status} />
+                  {draftUrl ? (
+                    <Button asChild size="sm" variant="secondary">
+                      <a
+                        href={draftUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => {
+                          void prepareCheckin({ data: { id: c.id } })
+                            .then(() =>
+                              queryClient.invalidateQueries({ queryKey: ["checkins", propertyId] }),
+                            )
+                            .catch((e: unknown) =>
+                              toast.error(
+                                e instanceof Error ? e.message : "Could not record the draft.",
+                              ),
+                            );
+                        }}
+                      >
+                        <MessageCircle className="size-4" /> Open WhatsApp draft
+                      </a>
+                    </Button>
+                  ) : null}
+                  {c.status === "scheduled" || c.status === "sent" ? (
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => setRespondingTo(c)}>
+                        <CheckCircle2 className="size-4" /> Log response
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => skip(c.id)}>
+                        <XCircle className="size-4" />
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={!!respondingTo} onOpenChange={(o) => !o && setRespondingTo(null)}>
+        {respondingTo ? (
+          <ResponseDialog
+            checkin={respondingTo}
+            onDone={() => {
+              setRespondingTo(null);
+              queryClient.invalidateQueries({ queryKey: ["checkins", propertyId] });
+            }}
+          />
+        ) : null}
+      </Dialog>
+    </div>
+  );
+}
+
+const responseSchema = z.object({
+  responseText: z.string().optional(),
+  propertyCondition: z.string().optional(),
+  isVacant: z.enum(["yes", "no"]),
+});
+
+function ResponseDialog({ checkin, onDone }: { checkin: CheckinRow; onDone: () => void }) {
+  const form = useForm<z.infer<typeof responseSchema>>({
+    resolver: zodResolver(responseSchema),
+    defaultValues: { responseText: "", propertyCondition: "", isVacant: "no" },
+  });
+
+  async function onSubmit(values: z.infer<typeof responseSchema>) {
+    try {
+      await recordCheckinResponse(checkin.id, {
+        responseText: values.responseText,
+        propertyCondition: values.propertyCondition,
+        isVacant: values.isVacant === "yes",
+      });
+      toast.success("Response logged");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save that response.");
+    }
+  }
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Log their response</DialogTitle>
+        <DialogDescription>From the {titleCase(checkin.contact_type)}'s reply.</DialogDescription>
+      </DialogHeader>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="responseText"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>What they said</FormLabel>
+                <FormControl>
+                  <Textarea rows={3} {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="propertyCondition"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Condition noted</FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g. Good, minor plumbing issue" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="isVacant"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Currently vacant?</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="no">No</SelectItem>
+                    <SelectItem value="yes">Yes — follow up for new business</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <DialogFooter>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </DialogContent>
+  );
+}
+
+// Photos/videos live in PropertyMediaManager.
